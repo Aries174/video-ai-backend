@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+python-multipart
+python-dotenv
+openai
+openai-whisper
+edge-tts
+moviepy
+torch
+torchaudio
+numpy
+yt-dlp
+demucs

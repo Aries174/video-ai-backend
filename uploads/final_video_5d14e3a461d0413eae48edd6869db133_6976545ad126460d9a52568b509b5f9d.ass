@@ -1,0 +1,31 @@
+﻿[Script Info]
+Title: AI Subtitle
+ScriptType: v4.00+
+PlayResX: 720
+PlayResY: 1280
+ScaledBorderAndShadow: yes
+WrapStyle: 0
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: BoxStyle,Arial,45,&H00000000,&H00FFFFFF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,0,0,5,0,0,0,1
+Style: TextStyle,Arial,45,&H00000000,&H00FFFFFF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,0,0,5,0,0,0,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:00.00,0:00:01.17,BoxStyle,,0,0,0,,{\an7\pos(17,943)\fs1\1c&Hffffff\1a&H00&\3a&HFF&\4a&HFF&\bord0\shad0\p1}m 8 0 l 668 0 b 676 0 676 0 676 8 l 676 131 b 676 139 676 139 668 139 l 8 139 b 0 139 0 139 0 131 l 0 8 b 0 0 0 0 8 0{\p0}
+Dialogue: 1,0:00:00.00,0:00:01.17,TextStyle,,0,0,0,,{\an5\pos(355,1012)\fs45\fnArial\1c&H00000000\3c&H000000&\bord1\shad0\q2}Thật là thiên tài mà
+Dialogue: 0,0:00:01.22,0:00:04.32,BoxStyle,,0,0,0,,{\an7\pos(17,943)\fs1\1c&Hffffff\1a&H00&\3a&HFF&\4a&HFF&\bord0\shad0\p1}m 8 0 l 668 0 b 676 0 676 0 676 8 l 676 131 b 676 139 676 139 668 139 l 8 139 b 0 139 0 139 0 131 l 0 8 b 0 0 0 0 8 0{\p0}
+Dialogue: 1,0:00:01.22,0:00:04.32,TextStyle,,0,0,0,,{\an5\pos(355,1012)\fs45\fnArial\1c&H00000000\3c&H000000&\bord1\shad0\q2}Bắt đầu hàn tạm rồi khoan lỗ\Ntrên ống thép
+Dialogue: 0,0:00:04.37,0:00:06.24,BoxStyle,,0,0,0,,{\an7\pos(17,943)\fs1\1c&Hffffff\1a&H00&\3a&HFF&\4a&HFF&\bord0\shad0\p1}m 8 0 l 668 0 b 676 0 676 0 676 8 l 676 131 b 676 139 676 139 668 139 l 8 139 b 0 139 0 139 0 131 l 0 8 b 0 0 0 0 8 0{\p0}
+Dialogue: 1,0:00:04.37,0:00:06.24,TextStyle,,0,0,0,,{\an5\pos(355,1012)\fs45\fnArial\1c&H00000000\3c&H000000&\bord1\shad0\q2}Sau đó cắt một khe nhỏ trên\Nống thép
+Dialogue: 0,0:00:06.29,0:00:08.68,BoxStyle,,0,0,0,,{\an7\pos(17,943)\fs1\1c&Hffffff\1a&H00&\3a&HFF&\4a&HFF&\bord0\shad0\p1}m 8 0 l 668 0 b 676 0 676 0 676 8 l 676 131 b 676 139 676 139 668 139 l 8 139 b 0 139 0 139 0 131 l 0 8 b 0 0 0 0 8 0{\p0}
+Dialogue: 1,0:00:06.29,0:00:08.68,TextStyle,,0,0,0,,{\an5\pos(355,1012)\fs45\fnArial\1c&H00000000\3c&H000000&\bord1\shad0\q2}Tiếp theo hàn vít vào vị trí đã\Nkhoan
+Dialogue: 0,0:00:08.73,0:00:10.95,BoxStyle,,0,0,0,,{\an7\pos(17,943)\fs1\1c&Hffffff\1a&H00&\3a&HFF&\4a&HFF&\bord0\shad0\p1}m 8 0 l 668 0 b 676 0 676 0 676 8 l 676 131 b 676 139 676 139 668 139 l 8 139 b 0 139 0 139 0 131 l 0 8 b 0 0 0 0 8 0{\p0}
+Dialogue: 1,0:00:08.73,0:00:10.95,TextStyle,,0,0,0,,{\an5\pos(355,1012)\fs45\fnArial\1c&H00000000\3c&H000000&\bord1\shad0\q2}Lại cắt mở rộng khe đã cắt\Ntrước đó
+Dialogue: 0,0:00:11.00,0:00:13.97,BoxStyle,,0,0,0,,{\an7\pos(17,943)\fs1\1c&Hffffff\1a&H00&\3a&HFF&\4a&HFF&\bord0\shad0\p1}m 8 0 l 668 0 b 676 0 676 0 676 8 l 676 131 b 676 139 676 139 668 139 l 8 139 b 0 139 0 139 0 131 l 0 8 b 0 0 0 0 8 0{\p0}
+Dialogue: 1,0:00:11.00,0:00:13.97,TextStyle,,0,0,0,,{\an5\pos(355,1012)\fs45\fnArial\1c&H00000000\3c&H000000&\bord1\shad0\q2}Bây giờ có thể làm thành dụng\Ncụ gỡ trục
+Dialogue: 0,0:00:14.02,0:00:16.36,BoxStyle,,0,0,0,,{\an7\pos(17,943)\fs1\1c&Hffffff\1a&H00&\3a&HFF&\4a&HFF&\bord0\shad0\p1}m 8 0 l 668 0 b 676 0 676 0 676 8 l 676 131 b 676 139 676 139 668 139 l 8 139 b 0 139 0 139 0 131 l 0 8 b 0 0 0 0 8 0{\p0}
+Dialogue: 1,0:00:14.02,0:00:16.36,TextStyle,,0,0,0,,{\an5\pos(355,1012)\fs45\fnArial\1c&H00000000\3c&H000000&\bord1\shad0\q2}Cuối cùng chèn dụng cụ vào\Ntrục để tháo ra
+Dialogue: 0,0:00:16.41,0:00:17.88,BoxStyle,,0,0,0,,{\an7\pos(17,943)\fs1\1c&Hffffff\1a&H00&\3a&HFF&\4a&HFF&\bord0\shad0\p1}m 8 0 l 668 0 b 676 0 676 0 676 8 l 676 131 b 676 139 676 139 668 139 l 8 139 b 0 139 0 139 0 131 l 0 8 b 0 0 0 0 8 0{\p0}
+Dialogue: 1,0:00:16.41,0:00:17.88,TextStyle,,0,0,0,,{\an5\pos(355,1012)\fs45\fnArial\1c&H00000000\3c&H000000&\bord1\shad0\q2}Các bạn nghĩ phát minh này\Nthế nào

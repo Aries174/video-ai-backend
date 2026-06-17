@@ -6,6 +6,7 @@ from fastapi import (
     BackgroundTasks,
     Form,
 )
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 import subprocess, json
@@ -47,6 +48,13 @@ FONT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "fonts"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 WHISPER_MODEL = "small"
+WHISPER_MIN_LOGPROB = float(os.getenv("WHISPER_MIN_LOGPROB", "-10.0"))
+WHISPER_KEEP_ALL_SEGMENTS = os.getenv("WHISPER_KEEP_ALL_SEGMENTS", "").lower() in ["true", "1", "yes"]
+if WHISPER_KEEP_ALL_SEGMENTS:
+    WHISPER_MIN_LOGPROB = -100.0  # Vô hiệu hóa filter logprob
+print(f"[Config] Whisper min logprob: {WHISPER_MIN_LOGPROB}") 
+if WHISPER_KEEP_ALL_SEGMENTS:
+    print(f"[Config] WARNING: WHISPER_KEEP_ALL_SEGMENTS=true → keeping ALL segments (including potential hallucinations)")
 
 # ---------------------------------------------------------------------------
 # LLM provider config (chọn động qua env var TRANSLATE_PROVIDER)
@@ -153,6 +161,8 @@ ALLOWED_VOICES = [v["value"] for v in VOICE_OPTIONS]
 LANGUAGE_TO_WHISPER = {
     "vi": "vi", "en": "en", "zh": "zh", "ja": "ja", "ko": "ko",
 }
+
+
 
 model = whisper.load_model(WHISPER_MODEL)
 
@@ -370,7 +380,8 @@ def is_bad_translation(text, target_lang="vi"):
 
 
 FALLBACK_TEXT = "Không rõ"
-BATCH_SIZE = 10  # số câu mỗi lần gửi Ollama
+BATCH_SIZE = int(os.getenv("BATCH_SIZE", "10"))  # số câu mỗi lần gửi Ollama
+print(f"[Config] Batch size for translation: {BATCH_SIZE}")
 CONTEXT_TAIL = 2  # số câu trước được đưa làm ngữ cảnh cho batch kế tiếp
 
 # Whisper hay "ảo giác" những câu này khi gặp nhạc nền hoặc đoạn im lặng.
@@ -385,6 +396,8 @@ WHISPER_HALLUCINATION_PATTERNS = [
 
 # Câu chỉ gồm interjection thuần ("嗯", "啊啊", "哦哦哦") = noise
 _PURE_INTERJECTION_RE = re.compile(r"^[嗯啊哦唔呃哎哈嘿嘻呀哇\s，。！？.,\!\?]+$")
+# Ký tự lặp noise thuần để lọc "嗯嗯", "啊啊" nhưng không bỏ "妈" hay "你"
+_REPEATED_NOISE_CHARS = set("嗯啊哦唔呃哎哈嘿嘻呀哇")
 # Bỏ dấu câu để so khớp pattern
 _PUNCT_RE = re.compile(r"[，。！？、,.\!\?\s]+")
 
@@ -398,15 +411,15 @@ def is_whisper_hallucination(text):
     if _PURE_INTERJECTION_RE.match(text):
         return True
 
-    # 1-2 ký tự lặp ("嗯嗯", "啊啊啊") thường là noise
-    if len(text) <= 3 and len(set(text.replace(" ", ""))) <= 1:
-        return True
-
-    # Chỉ flag pattern khi nó CHIẾM gần như toàn bộ câu, không phải nằm trong câu dài
     cleaned = _PUNCT_RE.sub("", text)
     if not cleaned:
         return True
 
+    # 1-2 ký tự lặp của noise thuần ("嗯嗯", "啊啊啊") thường là noise
+    if len(cleaned) <= 3 and len(set(cleaned)) == 1 and cleaned in _REPEATED_NOISE_CHARS:
+        return True
+
+    # Chỉ flag pattern khi nó CHIẾM gần như toàn bộ câu, không phải nằm trong câu dài
     for pat in WHISPER_HALLUCINATION_PATTERNS:
         # Pattern là toàn bộ câu, hoặc chiếm ≥ 80% độ dài câu
         if cleaned == pat:
@@ -940,6 +953,651 @@ Idiom & slang TUYỆT ĐỐI không dịch chữ-một:
 • 然后再捅一圈小孔 = "Rồi đục thêm một vòng lỗ nhỏ xung quanh."
 • 这样做出来的洗菜盆过滤网 = "Vậy là đã có một chiếc lưới lọc rau củ tự chế."
 • 太好用了 = "Dùng cực kỳ tiện lợi."
+• 太厉害了,想周成固定起来再把周成外圈切割开一个缺口取出里面的钢珠和周成内圈。 = "Quá đỉnh rồi, cố định vòng bi lại rồi cắt một khe trên vòng ngoài để lấy các viên bi và vòng trong ra."
+• 接着焊接上罗文感和罗母。 = "Tiếp theo hàn một đoạn ty ren và một đai ốc vào."
+• 然后再把钢管切割一段下来。 = "Sau đó cắt một đoạn ống thép phù hợp."
+• 再然后把周成焊接到钢管上和周成内圈焊接上钢板。 = "Tiếp tục hàn vòng bi vào ống thép và hàn một tấm thép vào vòng trong của vòng bi."
+• 这样一把可调节班手就制作好了。 = "Vậy là đã chế tạo xong một chiếc cờ lê điều chỉnh đa năng."
+• 真是太聪明了。 = "Đúng là một ý tưởng rất thông minh."
+• 注意看。 = "Chú ý xem nhé."
+• 把门禁对折再反折一厘米。 = "Gấp đôi mép vải rồi gấp ngược vào trong khoảng 1 cm."
+• 再把铃子内贴放上面面对面。 = "Đặt lớp vải lót úp mặt vào nhau."
+• 车分起来。 = "Sau đó may cố định lại."
+• 这样做圆铃特别简单。 = "Làm phần bo cong theo cách này rất đơn giản."
+• 在有弧度的地方打上几个剪刀口。 = "Ở những đoạn cong, dùng kéo cắt vài đường nhỏ."
+• 这样做的铃子更圆顺。 = "Nhờ vậy phần bo sẽ tròn đều và mềm mại hơn."
+• 然后在内贴的上面压一道边线。 = "Tiếp theo may một đường chỉ diễu trên lớp vải lót."
+• 这样防止铃子外翻。 = "Cách này giúp mép vải không bị lật ra ngoài."
+• 再放到正面来看效果。 = "Cuối cùng lật mặt phải ra để xem thành phẩm."
+• 是不是非常的平整又圆顺。 = "Có phải trông rất phẳng phiu và tròn đẹp không?"
+• 反面也浮贴。 = "Mặt trái cũng được xử lý rất gọn gàng."
+• 你学会了吗? = "Bạn đã học được cách làm này chưa?"
+• 自从有了这个小熊电砂锅,包汤炖肉都不需要盯着火了。 = "Từ khi có chiếc nồi đất điện này, việc nấu canh hay hầm thịt trở nên nhàn hơn rất nhiều."
+• 分体式的设计三升的黄金容量。 = "Thiết kế tách rời với dung tích vàng 3 lít, vừa đủ cho cả gia đình."
+• 材质是双层设计用着也放心。 = "Lòng nồi bằng chất liệu an toàn, sử dụng yên tâm hơn."
+• 冷热骤变不开裂。 = "Chịu được thay đổi nhiệt độ nóng lạnh, hạn chế nứt vỡ."
+• 温火慢炖。 = "Chế độ hầm lửa nhỏ giúp món ăn chín đều và đậm vị."
+• 不溢锅,防干烧。 = "Tự động chống trào và chống cháy khô an toàn."
+• 砂锅煲的汤能更好地锁住食材的营养和味道。 = "Nồi đất giúp giữ trọn dưỡng chất và hương vị tự nhiên của thực phẩm."
+• 五大菜单自带预约保温功能。 = "Tích hợp 5 chế độ nấu cùng chức năng hẹn giờ và giữ ấm."
+• 煲煮焖炖炒,一锅都能搞定。 = "Từ nấu canh, nấu cháo đến hầm thực phẩm đều có thể thực hiện trong một nồi."
+• 早上煲个砂锅粥。 = "Buổi sáng chỉ cần nấu một nồi cháo thơm ngon."
+• 煮完就能直接端上桌。 = "Nấu xong có thể mang lên bàn ăn hoặc tiếp tục hầm đều rất tiện."
+• 洗的时候用水一冲就干净了。 = "Khi vệ sinh chỉ cần xả nước là sạch."
+• 也不用担心进水真的很方便。 = "Không phải lo nước vào bộ phận điện, cực kỳ tiện lợi khi sử dụng."
+• 太厉害了。 = "Quá đỉnh rồi!"
+• 油管断在接头螺纹里拧不出来，不要怕。 = "Nếu ống dẫn dầu bị gãy và kẹt trong phần ren nối, đừng lo."
+• 可以用螺纹钻头插进去。 = "Hãy dùng mũi tháo ren ngược cắm vào bên trong đoạn ống bị gãy."
+• 卡住油管。 = "Khi mũi tháo đã bám chặt vào ống dẫn dầu,"
+• 再把油管拧出来。 = "chỉ cần xoay là có thể vặn đoạn ống bị kẹt ra ngoài."
+• 最后再用老虎钳把断掉的油管取出来。 = "Sau đó dùng kìm để lấy hoàn toàn phần ống dầu bị gãy ra."
+• 这样就可以更换新油管了。 = "Như vậy là có thể thay thế bằng một ống dẫn dầu mới."
+• 你们觉得这个方法实用吗? = "Mọi người thấy mẹo này có hữu ích không?"
+• 太厉害了。 = "Quá đỉnh rồi!"
+• 报废的齿轮和老虎钳不要扔。 = "Đừng vội vứt những bánh răng cũ và kìm chết đã hỏng."
+• 可以制作成多功能轴承提取工具。 = "Chúng có thể được tận dụng để chế tạo một dụng cụ tháo vòng bi đa năng."
+• 先把老虎钳焊接到齿轮上。 = "Đầu tiên hàn chiếc kìm chết vào bánh răng."
+• 再把齿轮切割下来。 = "Sau đó cắt và gia công bánh răng theo kích thước phù hợp."
+• 然后再把另一个老虎钳的前嘴焊接到齿轮上切割下来。 = "Tiếp tục hàn phần đầu của một chiếc kìm chết khác vào bánh răng rồi cắt chỉnh lại."
+• 接着把螺纹杆焊接到老虎钳的控制手柄上。 = "Tiếp theo hàn một đoạn ty ren vào tay cầm điều chỉnh của kìm."
+• 这样就可以通过调节拧紧老虎钳上的螺母来卡住轴承。 = "Khi siết đai ốc điều chỉnh, dụng cụ sẽ kẹp chặt vòng bi hoặc bạc đạn."
+• 最后再把轴承提取出来。 = "Cuối cùng chỉ cần kéo ra là có thể tháo vòng bi bị kẹt."
+• 你们说这个发明好用吗? = "Mọi người thấy phát minh này có hữu ích không?"
+• 这个杯子好啊。 = "Chiếc cốc này thật sự rất tiện."
+• 能热牛奶还能煮茶炖甜品。 = "Vừa hâm sữa, pha trà, lại còn nấu được các món tráng miệng."
+• 不仅好看还特别实用。 = "Không chỉ đẹp mắt mà còn cực kỳ hữu dụng."
+• 内胆是法郎又不粘的。 = "Lòng cốc được phủ lớp chống dính cao cấp."
+• 用起来特别方便。 = "Sử dụng và vệ sinh đều rất dễ dàng."
+• 功能也齐全。 = "Tích hợp đầy đủ nhiều chức năng."
+• 烧水、花茶、煲汤泡面、焖饭煮好还自动保温。 = "Có thể đun nước, pha trà, hâm canh, nấu mì và nấu cơm, xong còn tự động giữ ấm."
+• 早餐用它热个牛奶。 = "Buổi sáng dùng để hâm nóng sữa rất tiện."
+• 不温不烫。 = "Nhiệt độ vừa phải, không quá nóng."
+• 55度刚刚好。 = "Mức giữ ấm 55°C rất dễ uống."
+• 平时用它烧水煮养生茶都很方便。 = "Bình thường dùng để đun nước hay nấu trà thảo mộc cũng rất phù hợp."
+• 你们如果喜欢喝茶。 = "Nếu bạn là người thích uống trà."
+• 还能用这个茶漏煮茶。 = "Có thể dùng lõi lọc đi kèm để nấu trà."
+• 就不担心喝到茶渣了。 = "Không lo uống phải bã trà nữa."
+• 这小巧精致的造型。 = "Thiết kế nhỏ gọn và tinh tế."
+• 不管你们在家或办公室用。 = "Dù dùng ở nhà hay tại văn phòng."
+• 还是出差旅行。 = "Hoặc mang theo khi đi công tác, du lịch."
+• 都很方便。 = "Đều rất tiện lợi."
+• 每天早上都要吃鸡蛋的姐妹。 = "Những ai sáng nào cũng ăn trứng thì đừng bỏ qua nhé."
+• 这个制高大品牌蒸蛋器真的可以安排上。 = "Chiếc máy hấp trứng của thương hiệu Zhigao này thực sự rất đáng mua."
+• 用它煮鸡蛋不用看时间也不用早起了。 = "Dùng nó luộc trứng không cần canh giờ, cũng không phải dậy sớm."
+• 双层的设计特别实用。 = "Thiết kế hai tầng cực kỳ tiện lợi."
+• 煮鸡蛋的同时还能蒸点包子馒头。 = "Vừa luộc trứng vừa có thể hấp bánh bao hoặc màn thầu."
+• 晚上可以提前预约好时间。 = "Buổi tối chỉ cần hẹn giờ trước."
+• 早上起来就能吃到热乎乎的早餐了。 = "Sáng thức dậy là có ngay bữa sáng nóng hổi."
+• 功能也很齐全。 = "Các chức năng cũng rất đầy đủ."
+• 不仅能做早餐。 = "Không chỉ dùng để chuẩn bị bữa sáng."
+• 炖个甜品或者给杯子高温清洁都没问题。 = "Dùng để chưng món ngọt hoặc khử trùng cốc bằng nhiệt độ cao đều rất tiện."
+• 还是制高大品牌。 = "Lại còn đến từ thương hiệu Zhigao uy tín."
+• 品质也没得说。 = "Chất lượng thì hoàn toàn yên tâm."
+• 小小一个。 = "Thiết kế nhỏ gọn."
+• 放厨房还不占空间。 = "Đặt trong bếp cũng không chiếm nhiều diện tích."
+• 这个设计好啊。 = "Thiết kế này thật sự rất thông minh."
+• 蒜瓣一放。 = "Chỉ cần cho tép tỏi vào."
+• 一按蒜丁就切好了。 = "Ấn nhẹ một cái là tỏi đã được băm nhỏ."
+• 一点都不费手。 = "Không tốn chút sức nào."
+• 里面是不锈钢的刀片。 = "Bên trong sử dụng lưỡi dao bằng thép không gỉ."
+• 按压下去就把大蒜压成大小均匀的蒜丁了。 = "Chỉ cần nhấn xuống là tỏi được cắt thành những miếng đều nhau."
+• 也不用拿刀切半天。 = "Không cần mất thời gian dùng dao băm thủ công."
+• 还手上都是味了。 = "Tay cũng không bị ám mùi tỏi."
+• 倒点生抽跟醋还能秒变一个酱料底。 = "Cho thêm chút nước tương và giấm là có ngay phần sốt chấm thơm ngon."
+• 别看那么便宜。 = "Đừng thấy giá rẻ mà xem thường."
+• 质感可好了。 = "Chất lượng hoàn thiện rất tốt."
+• 还能拆卸。 = "Các bộ phận còn có thể tháo rời."
+• 用完水一冲就干净了。 = "Dùng xong chỉ cần rửa qua nước là sạch."
+• 自从买了这个带转盘的杂粮收纳盒。 = "Từ khi mua hộp đựng ngũ cốc xoay 360 độ này."
+• 每次煮个粥或者做个杂粮饭。 = "Mỗi lần nấu cháo hay làm cơm ngũ cốc."
+• 真的太方便了。 = "Thực sự rất tiện lợi."
+• 再也不用各种袋子摆的满柜子都是。 = "Không còn cảnh đủ loại túi đựng chất đầy trong tủ nữa."
+• 就这样集中收纳在一块。 = "Tất cả được sắp xếp gọn gàng trong cùng một hộp."
+• 需要哪个就这么一转。 = "Cần loại nào chỉ việc xoay nhẹ một vòng."
+• 可省事了。 = "Vừa nhanh vừa tiện."
+• 它有六个收纳罐。 = "Hộp được chia thành 6 ngăn chứa riêng biệt."
+• 平身都是透明的。 = "Thiết kế trong suốt từ trên xuống dưới."
+• 想要哪个一目了然。 = "Nhìn một cái là biết ngay bên trong có gì."
+• 而且它旋转起来真的超顺滑。 = "Cơ chế xoay rất mượt mà."
+• 一点都不卡顿。 = "Hoàn toàn không bị kẹt hay giật."
+• 密封性也很好。 = "Khả năng kín khí cũng rất tốt."
+• 就不怕会受潮长虫。 = "Không lo ngũ cốc bị ẩm mốc hay mọc mọt."
+• 开口的设计就很好。 = "Thiết kế miệng lấy thực phẩm rất tiện dụng."
+• 控量也不会太多。 = "Dễ kiểm soát lượng lấy ra, tránh lãng phí."
+• 不管放在台面上还是柜子里都可以。 = "Đặt trên bàn bếp hay trong tủ đều phù hợp."
+• 家里的杯子怎么摆都是乱糟糕的。 = "Ly cốc trong nhà lúc nào cũng bày bừa lộn xộn."
+
+• 你就像我安排这个杯架。 = "Bạn nên sắm ngay chiếc kệ để cốc này."
+
+• 分层收纳的设计一目了然。 = "Thiết kế phân tầng giúp sắp xếp gọn gàng và dễ quan sát."
+
+• 拿取超方便。 = "Lấy ra hay cất vào đều rất thuận tiện."
+
+• 保温杯、玻璃杯、普通水杯全都能放。 = "Bình giữ nhiệt, cốc thủy tinh hay cốc uống nước thông thường đều để được."
+
+• 波浪卡槽的设计特别稳当。 = "Các khe đỡ dạng gợn sóng giúp cố định cốc rất chắc chắn."
+
+• 而且是多巴胺的配色。 = "Màu sắc phong cách Dopamine trẻ trung và bắt mắt."
+
+• 不管放储柜还是台面。 = "Dù đặt trong tủ hay trên mặt bàn."
+
+• 杯子都能摆放得整整齐齐。 = "Mọi loại cốc đều được sắp xếp ngăn nắp."
+
+• 看着都特别舒服。 = "Nhìn vào cũng thấy gọn gàng và dễ chịu hơn."
+
+• 最关键的是再也不用翻箱倒柜找杯子了。 = "Quan trọng nhất là không còn phải lục tung tủ kệ để tìm cốc
+• 太厉害了。 = "Quá đỉnh luôn."
+
+• 将报废的大力钳的钳嘴焊接到钢板上。 = "Hàn phần đầu của chiếc kìm cộng lực cũ lên một tấm thép."
+
+• 接着装上螺丝。 = "Sau đó lắp bu lông vào."
+
+• 用螺母把两块钳嘴固定起来。 = "Dùng đai ốc để cố định hai đầu lưỡi cắt lại với nhau."
+
+• 然后再把摇杆手柄穿上螺丝固定上去。 = "Tiếp theo lắp tay đòn và cố định bằng bu lông."
+
+• 再接着把连杆用螺丝固定安装到钳嘴和摇杆手柄上。 = "Gắn thanh truyền nối giữa đầu kìm và tay đòn bằng bu lông."
+
+• 这样一台不用大力就可以把钢筋轻松剪断的大力钳就制作好了。 = "Như vậy là đã hoàn thành một chiếc kìm cắt thép trợ lực, giúp cắt thép rất nhẹ tay."
+
+• 可以用来剪钢筋铁管。 = "Có thể dùng để cắt thép cây và ống sắt."
+
+• 你们说这个发明怎么样？ = "Các bạn thấy phát minh này thế nào?"
+• 太厉害了。 = "Quá đỉnh luôn."
+
+• 像这样的钢管拼接在一起是焊接不上去的。 = "Những đoạn ống thép như thế này rất khó hàn nối trực tiếp với nhau."
+
+• 可以把钢管用尺子按照视频中画线做记号再切割掉。 = "Hãy dùng thước đánh dấu theo đường cắt như trong video rồi cắt bỏ phần đã đánh dấu."
+
+• 这样就可以完美无缝拼接焊接在一起了。 = "Sau đó các đoạn ống sẽ được ghép và hàn lại một cách khít đẹp, gần như không có khe hở."
+• 真是个天才。 = "Đúng là một ý tưởng quá thông minh."
+
+• 把螺母焊接到另一个方形螺母上。 = "Hàn một đai ốc vào một đai ốc vuông khác."
+
+• 接着在螺母的侧面用电钻打孔。 = "Tiếp theo dùng máy khoan tạo một lỗ ở bên hông đai ốc."
+
+• 然后再把打好的孔攻螺纹。 = "Sau đó taro ren cho lỗ vừa khoan."
+
+• 最后再拧上一颗螺丝进去。 = "Cuối cùng vặn một con vít vào."
+
+• 这样一个电池接线柱固定器就制作好了。 = "Như vậy là đã hoàn thành một bộ cố định cọc đấu dây bình ắc quy."
+
+• 你们觉得这个发明好用吗？ = "Các bạn thấy phát minh này có hữu ích không?"
+• 这才是桌面办公需要的神器。 = "Đây mới đúng là món đồ không thể thiếu cho dân văn phòng."
+
+• 一架多用。 = "Một sản phẩm nhưng có thể sử dụng theo nhiều cách."
+
+• 磁吸面可拆卸手提。 = "Mặt nam châm có thể tháo rời và mang theo dễ dàng."
+
+• 展开托脚架平板。 = "Mở ra là có thể dùng làm giá đỡ máy tính bảng."
+
+• 支架还能架笔记本。 = "Thậm chí còn có thể đỡ được cả laptop."
+
+• 脚架带有自动弹簧架。 = "Chân đế được trang bị cơ chế lò xo tự động."
+
+• 调节高度很适合。 = "Có thể điều chỉnh độ cao linh hoạt theo nhu cầu."
+
+• 桌面办公时。 = "Khi làm việc tại bàn."
+
+• 再也不用低头了。 = "Không còn phải cúi đầu nhìn màn hình nữa."
+
+• 收纳起来小小一个。 = "Gấp gọn lại chỉ còn một kích thước rất nhỏ."
+
+• 随身携带也很方便。 = "Mang theo bên mình cũng vô cùng tiện lợi."
+• 哈哈哈哈。 = "Haha, buồn cười thật."
+
+• 我要是不说哪里看得出是个纸巾盒啊。 = "Nếu tôi không nói thì chẳng ai nghĩ đây là một hộp đựng khăn giấy đâu."
+
+• 还是卡皮巴拉和熊帽头的造型。 = "Lại còn được thiết kế theo hình Capybara đội mũ gấu siêu dễ thương."
+
+• 试过超多种纸巾盒。 = "Tôi đã dùng thử rất nhiều loại hộp đựng khăn giấy."
+
+• 还是这种磁吸开盖的罐子方便啊。 = "Nhưng loại nắp nam châm mở đóng như thế này vẫn tiện nhất."
+
+• 抽纸湿滑不卡顿。 = "Rút khăn rất mượt, không bị kẹt hay kéo rối."
+
+• 摆在桌子上啊。 = "Đặt trên bàn nhìn rất đẹp mắt."
+
+• 精致又百搭。 = "Vừa tinh tế vừa dễ phối với mọi không gian."
+
+• 随便一放都好看啊。 = "Đặt ở đâu cũng thấy xinh xắn."
+• 真是个天才啊。 = "Đúng là một ý tưởng quá thông minh."
+
+• 把自行车的车头钢管切割下来。 = "Cắt lấy phần ống cổ lái của một chiếc xe đạp cũ."
+
+• 固定到瓶口前上。 = "Sau đó cố định vào phần đầu của dụng cụ."
+
+• 接着将轴承外圈焊接到钢管上。 = "Tiếp theo hàn vòng ngoài của ổ bi lên ống thép."
+
+• 然后再把轴承外圈切割掉留下一半。 = "Sau đó cắt bỏ một nửa vòng ngoài của ổ bi."
+
+• 再然后就可以将链条的螺纹焊到钢管里面。 = "Tiếp tục hàn đoạn xích có ren vào bên trong ống thép."
+
+• 再将链条焊接到轴承外圈上。 = "Rồi hàn phần xích đó vào vòng ngoài của ổ bi."
+
+• 这样就可以把钢管放平。 = "Như vậy là có thể đặt ống thép nằm ngang để sử dụng."
+
+• 再把螺母拧到螺纹上。 = "Cuối cùng vặn đai ốc vào phần ren đã chuẩn bị."
+
+• 这样一个机油滤芯拆卸神器就制作好了。 = "Vậy là đã hoàn thành dụng cụ tháo lọc dầu động cơ."
+
+• 可以用它来拆卸安装发动机的机油滤芯。 = "Dụng cụ này có thể dùng để tháo lắp lọc dầu trên động cơ."
+
+• 真是太好用了。 = "Thực sự rất tiện dụng."
+• 剥线就能发家致富的方法。 = "Đây là một mẹo giúp bóc dây điện nhanh và hiệu quả hơn."
+
+• 首先。 = "Đầu tiên."
+
+• 要自己动手像废品站老板一样。 = "Hãy tự chế một dụng cụ giống như những người thu mua phế liệu chuyên nghiệp."
+
+• 用合页自制出一把锋利的剥线小工具。 = "Dùng một chiếc bản lề để làm thành dụng cụ tuốt dây điện sắc bén."
+
+• 回收来的电线就这样去剥皮。 = "Những cuộn dây điện thu gom về chỉ cần dùng dụng cụ này để tách lớp vỏ."
+
+• 取铜线。 = "Lấy phần lõi đồng bên trong ra."
+
+• 不用剪刀。 = "Không cần dùng kéo."
+
+• 快几倍。 = "Tốc độ nhanh hơn gấp nhiều lần."
+
+• 一个人顶几个。 = "Một người làm việc bằng vài người."
+
+• 想不发家致富都难。 = "Làm việc hiệu quả thế này thì khó mà không kiếm thêm được tiền."
+• 自动封盖的鸡蛋盒。 = "Hộp đựng trứng tự động đóng nắp."
+
+• 每一层拿掉最后一个鸡蛋。 = "Khi lấy quả trứng cuối cùng ở một tầng,"
+
+• 它就会自动翻上去。 = "ngăn phía trên sẽ tự động lật xuống."
+
+• 容量大。 = "Dung tích lớn."
+
+• 可以装30个鸡蛋。 = "Có thể chứa tới 30 quả trứng."
+
+• 它的材质很厚实。 = "Chất liệu dày dặn và chắc chắn."
+
+• 尺寸设计得很合理。 = "Kích thước được thiết kế rất hợp lý."
+
+• 可以放到冰箱侧门。 = "Có thể đặt vừa vặn ở cánh cửa tủ lạnh."
+
+• 正好利用了侧边的空间。 = "Tận dụng hiệu quả không gian bên hông tủ."
+
+• 吃完一层拿一层。 = "Dùng hết một tầng thì lấy tiếp tầng kế tiếp."
+
+• 特别方便。 = "Cực kỳ tiện lợi."
+
+• 而且放在厨房的角落也可以。 = "Ngoài ra cũng có thể đặt gọn ở góc bếp."
+• 太厉害了。 = "Thật là một ý tưởng tuyệt vời."
+
+• 将钢管焊接到轴承制作的底座上固定起来。 = "Hàn một đoạn ống thép vào phần đế được làm từ vòng bi để cố định lại."
+
+• 接着在大钢管上焊接上一条小钢管。 = "Tiếp theo hàn thêm một đoạn ống thép nhỏ lên ống thép lớn."
+
+• 然后再清理掉焊接留下的焊渣。 = "Sau đó làm sạch phần xỉ hàn còn sót lại."
+
+• 这样一个切割片放置工具就制作好了。 = "Như vậy là đã hoàn thành một giá đỡ để cất giữ lưỡi cắt."
+
+• 你们说这个发明怎么样? = "Các bạn thấy phát minh này có hữu ích không?"
+• 太厉害了。 = "Quá thông minh rồi."
+
+• 将钢管焊接到轴承制作的底座上固定起来。 = "Đầu tiên hàn một đoạn ống thép lên phần đế được chế tạo từ vòng bi để cố định chắc chắn."
+• 接着在大钢管上焊接上一条小钢管。 = "Tiếp theo hàn thêm một đoạn ống thép nhỏ lên thân ống thép lớn."
+• 然后再清理掉焊接留下的焊渣。 = "Sau đó vệ sinh sạch phần xỉ hàn còn lại sau khi gia công."
+• 这样一个切割片放置工具就制作好了。 = "Như vậy là đã hoàn thành một giá đỡ chuyên dùng để cất giữ các lưỡi cắt."
+• 你们说这个发明怎么样? = "Các bạn thấy phát minh này có hay không?"
+• 嫂子。 = "Chị dâu."
+• 你好香啊。 = "Chị thơm quá."
+• 张建国。 = "Trương Kiến Quốc."
+• 你怎么在这里。 = "Sao anh lại ở đây?"
+• 我不是被冻死了吗。 = "Chẳng phải tôi đã chết cóng rồi sao?"
+• 求求你们。 = "Xin mọi người."
+• 你们不要赶我走。 = "Đừng đuổi tôi đi."
+• 我23岁嫁到张家。 = "Tôi gả vào nhà họ Trương từ năm 23 tuổi."
+• 这20年里没有功劳也有苦劳。 = "Hai mươi năm qua, dù không có công lao lớn thì cũng có biết bao vất vả."
+• 大嫂 早几年看你长得俊巧。 = "Chị dâu, mấy năm trước chị xinh đẹp biết bao."
+• 那时候跟了我多好。 = "Giá như lúc đó chị theo tôi thì tốt biết mấy."
+• 现在大哥死了。 = "Giờ anh cả đã mất rồi."
+• 你又是一个半摊吃白饭。 = "Chị lại trở thành người ăn không ngồi rồi trong nhà."
+• 不赶你赶谁。 = "Không đuổi chị thì đuổi ai?"
+• 我们张家可没多余的娘娘。 = "Nhà họ Trương chúng tôi không nuôi người vô dụng."
+• 你跟他说这些干啥。 = "Nói những chuyện đó với cô ta làm gì?"
+• 赶紧滚 多亏一切。 = "Cút ngay đi."
+• 妈 这二十年我洗衣做饭下地干活。 = "Mẹ à, suốt hai mươi năm qua con giặt giũ, nấu cơm và làm việc đồng áng."
+• 连过娶媳妇儿 侄子上大学都是我出钱出力啊。 = "Ngay cả việc cưới vợ cho em trai và cho cháu đi học đại học cũng đều do con bỏ tiền bỏ sức."
+• 这种房子我也可以不要。 = "Căn nhà này con cũng có thể không cần."
+• 只要你不看我走。 = "Chỉ cần mọi người để con rời đi."
+• 我呸。 = "Phi!"
+• 你生个丫头骗子。 = "Mày chỉ sinh ra một đứa con gái vô dụng."
+• 我儿子才三十五岁。 = "Con trai tao mới ba mươi lăm tuổi."
+• 就被你和那个骚把刑克死了。 = "Vậy mà bị mày và con hồ ly tinh kia hại chết."
+• 你还有脸说侧侯这个家。 = "Mày còn mặt mũi nhắc đến chuyện cống hiến cho cái nhà này sao?"
+• 真不要脸。 = "Đúng là không biết xấu hổ."
+• 难不成 我重生了。 = "Chẳng lẽ tôi đã sống lại?"
+• 重生到了二十年前被小数字逼见的那个晚上。 = "Tôi đã sống lại đúng vào đêm hai mươi năm trước, khi bị cả nhà ép đến đường cùng."
+• 太厉害了。 = "Đúng là một mẹo quá hay.
+• 维修水泵遇到螺丝损坏打滑拆不出来不要把水泵直接扔掉。 = "Khi sửa máy bơm nước mà gặp ốc vít bị tòe ren, trượt ren không tháo ra được thì đừng vội bỏ cả máy bơm."
+• 可以先给螺帽焊接上一颗钢珠。 = "Hãy hàn một viên bi thép lên đầu con ốc bị hỏng trước."
+• 接着再把一颗螺母焊接到钢珠上。 = "Sau đó hàn thêm một đai ốc vào viên bi thép đó."
+• 然后再把机油倒在螺母里面给螺母降温。 = "Tiếp theo đổ dầu máy vào để làm nguội phần đai ốc vừa hàn."
+• 这样。 = "Làm như vậy là được.
+• 再用套筒拧螺母再把打滑的螺丝带出来。 = "Cuối cùng dùng khẩu tuýp vặn đai ốc để kéo luôn con ốc bị trượt ren ra ngoài."
+• 真是太聪明了。 = "Đúng là một cách xử lý rất thông minh."
+• 太厉害了。 = "Đúng là một ý tưởng quá hay."
+• 将钢筋焊接到轴承钢圈上。 = "Hàn một thanh thép lên vòng ngoài của ổ bi."
+• 然后在钢筋上面焊接上齿轮。 = "Sau đó hàn một bánh răng lên thanh thép vừa lắp."
+• 接着再焊接一条掰弯的钢筋。 = "Tiếp tục hàn thêm một thanh thép đã được uốn cong."
+• 这样一台轴承卡死提取神器就制作好了。 = "Như vậy là đã hoàn thành dụng cụ chuyên dùng để tháo ổ bi bị kẹt."
+• 可以用来提取卡死的发动机轴承。 = "Dụng cụ này có thể dùng để tháo các ổ bi bị kẹt trên động cơ."
+• 你们说实用吗? = "Các bạn thấy phát minh này có hữu ích không?"
+• 嗨。 = "Chào."
+
+• 嫂子。 = "Chị dâu."
+
+• 你好香啊。 = "Chị thơm quá."
+
+• 张静谷。 = "Trương Tĩnh Cúc."
+
+• 你怎么在这里? = "Sao anh lại ở đây?"
+
+• 我不是被冻死了吗? = "Chẳng phải tôi đã chết cóng rồi sao?"
+
+• 求求你们。 = "Xin mọi người."
+
+• 你们不要赶我走。 = "Đừng đuổi tôi đi."
+
+• 我23岁嫁到张家。 = "Tôi gả vào nhà họ Trương từ năm 23 tuổi."
+
+• 这20年里没有功劳也有苦劳。 = "Hai mươi năm qua, dù không có công lao lớn thì cũng đã bỏ ra biết bao vất vả."
+
+• 大嫂 早几年看你长得俊巧。 = "Chị dâu, mấy năm trước chị xinh đẹp và duyên dáng biết bao."
+
+• 那时候跟了我多好。 = "Giá mà khi đó chị theo tôi thì tốt biết mấy."
+
+• 现在大哥死了。 = "Bây giờ anh cả đã mất rồi."
+
+• 你又是一个白吃白喝的人。 = "Giờ chị chỉ là người ăn không ngồi rồi trong nhà."
+
+• 不赶你赶谁。 = "Không đuổi chị thì đuổi ai?"
+
+• 我们张家可没多余的粮食养闲人。 = "Nhà họ Trương chúng tôi không nuôi người vô dụng."
+
+• 你跟他说这些干啥。 = "Nói những điều đó với cô ta làm gì?"
+
+• 赶紧滚。 = "Cút đi ngay."
+
+• 妈 这二十年我洗衣做饭下地干活。 = "Mẹ à, suốt hai mươi năm qua con giặt giũ, nấu cơm và làm việc đồng áng."
+
+• 连过去娶媳妇儿 侄子上大学。 = "Ngay cả chuyện cưới vợ cho người trong nhà và cho cháu đi học đại học."
+
+• 都是我出钱出力啊。 = "Đều là con bỏ tiền và bỏ công sức."
+
+• 这种房子我也可以不要。 = "Ngôi nhà này con cũng có thể không cần."
+
+• 只要你不赶我走。 = "Chỉ cần mẹ đừng đuổi con đi."
+
+• 我呸。 = "Phi!"
+
+• 你生个丫头骗子。 = "Mày đúng là đồ lừa đảo."
+
+• 我儿子才三十五岁。 = "Con trai tao mới chỉ 35 tuổi."
+
+• 就被你和那个贱女人害死了。 = "Đã bị mày và con đàn bà đó hại chết."
+
+• 你还有脸说伺候这个家。 = "Mày còn mặt mũi nào nhắc đến chuyện chăm lo cho cái nhà này?"
+
+• 真不要脸。 = "Đúng là không biết xấu hổ."
+
+• 难不成我重生了。 = "Chẳng lẽ tôi đã sống lại?"
+
+• 重生到了二十年前被逼走的那个晚上。 = "Tôi đã sống lại đúng vào đêm bị ép rời khỏi nhà cách đây hai mươi năm."
+• 太厉害了。 = "Đúng là một ý tưởng quá hay."
+
+• 把角钢焊接上铁棒和锁止机构制作成门锁。 = "Hàn thanh thép góc với thanh sắt và cơ cấu chốt khóa để chế tạo một bộ khóa cửa."
+
+• 接着再把制作好的门锁焊接到门上。 = "Sau đó hàn bộ khóa vừa chế tạo lên cánh cửa."
+
+• 这样一个简易实用的门锁就制作好了。 = "Như vậy là đã hoàn thành một chiếc khóa cửa đơn giản nhưng rất thực dụng."
+
+• 你们说这个门锁怎么样? = "Các bạn thấy chiếc khóa cửa này có hữu ích không?"
+• 机油盖你能找到吧？ = "Nắp châm dầu động cơ thì chắc bạn tìm được chứ?"
+
+• 那你就能找到旁边这个长4厘米、宽3厘米的黑色小零件。 = "Vậy thì bạn cũng sẽ thấy bộ phận nhỏ màu đen bên cạnh, dài khoảng 4cm và rộng khoảng 3cm."
+
+• 你手不自觉地拔掉了它的插头。 = "Bạn rút giắc cắm của nó ra."
+
+• 接着你去大舅那儿借了一个10件套套筒工具。 = "Sau đó đi mượn một bộ tuýp 10 món để tháo lắp."
+
+• 把它上面的固定螺丝拆了下来。 = "Tháo con ốc cố định trên bộ phận đó ra."
+
+• 双手不停地左右晃动。 = "Lắc nhẹ qua lại bằng hai tay."
+
+• 一不小心把它抖了出来。 = "Chỉ một lúc là có thể rút nó ra ngoài."
+
+• 左眼一睁，就能发现它上面全是油泥和积碳。 = "Lúc này sẽ thấy bề mặt của nó bám đầy cặn dầu và muội bẩn."
+
+• 已经把滤网完全堵死了。 = "Lưới lọc bên trong gần như đã bị tắc hoàn toàn."
+
+• 你又一个不小心。 = "Tiếp theo bạn lấy dung dịch vệ sinh chuyên dụng."
+
+• 在我的橱窗里面买来了一瓶化清剂。 = "Xịt dung dịch làm sạch lên toàn bộ bề mặt."
+
+• 朝着它上面就是一顿猛喷。 = "Phun kỹ vào các khe và vị trí bám bẩn."
+
+• 没想到清洗效果超乎想象。 = "Không ngờ hiệu quả làm sạch lại tốt đến vậy."
+
+• 油泥和积碳都被溶解下来了。 = "Cặn dầu và các chất bẩn đều được hòa tan."
+
+• 滤网都全部露出来了。 = "Lưới lọc sạch sẽ và hiện rõ trở lại."
+
+• 清洗干净以后。 = "Sau khi vệ sinh xong."
+
+• 用纸巾擦一擦。 = "Dùng khăn giấy lau khô."
+
+• 恢复了原厂状态。 = "Bộ phận này gần như trở lại trạng thái ban đầu."
+
+• 聪明的你又把它装了回去。 = "Sau đó lắp lại đúng vị trí ban đầu."
+
+• 那么恭喜你。 = "Xin chúc mừng."
+
+• 原来你的车发动机。 = "Những hiện tượng trên xe của bạn như:"
+
+• 冷车热车启动困难。 = "Khó khởi động khi máy nguội hoặc máy nóng."
+
+• 动力下降。 = "Động cơ yếu, giảm công suất."
+
+• 油耗飙升的故障情况。 = "Mức tiêu hao nhiên liệu tăng cao."
+
+• 居然全部消失了。 = "Đều có thể được cải thiện đáng kể."
+
+• 你一脸开心地跑过来。 = "Lúc đó bạn sẽ rất vui."
+
+• 给我点了一个小心心。 = "Và nhớ ủng hộ mình một lượt thích nhé."
+
+• 才知道它是VVT电磁阀。 = "Thì ra bộ phận này chính là van điện từ VVT."
+
+• 它的作用是通过发动机电脑控制它通断机油。 = "Nó được ECU điều khiển để kiểm soát dòng dầu động cơ."
+
+• 驱动VVT机构改变气门正时。 = "Từ đó điều chỉnh thời điểm đóng mở xupap."
+
+• 让车子怠速稳、提速快、更省油。 = "Giúp xe chạy êm hơn, tăng tốc tốt hơn và tiết kiệm nhiên liệu hơn."
+
+• 如果它脏了或者坏了。 = "Nếu bộ phận này bị bẩn hoặc hư hỏng."
+
+• 就会出现发动机异响。 = "Động cơ có thể xuất hiện tiếng kêu bất thường."
+
+• 油耗升高，动力下降。 = "Xe sẽ hao nhiên liệu hơn và bị giảm công suất."
+
+• 启动困难的故障现象。 = "Đồng thời gây ra hiện tượng khó khởi động."
+
+• 看到这里的大哥大姐能不能给我点一个关注。 = "Nếu thấy video hữu ích, hãy cho mình một lượt theo dõi nhé."
+
+• 我会每天讲解汽车知识传递正能量视频。 = "Mình sẽ tiếp tục chia sẻ kiến thức ô tô hữu ích mỗi ngày."
+• 真是个天才啊。 = "Đúng là một thiên tài."
+
+• 在卡死的轴承上打上热熔胶。 = "Bôi keo nóng chảy lên vòng bi đang bị kẹt."
+
+• 接着用热熔胶给轴承高温加热。 = "Tiếp tục dùng keo nóng chảy để gia nhiệt cho vòng bi."
+
+• 让轴承热胀冷缩。 = "Làm cho vòng bi giãn nở khi nóng và co lại khi nguội."
+
+• 然后再将螺纹杆和螺丝刀插到轴承里卡住轴承。 = "Sau đó đưa thanh ren và tua vít vào bên trong để giữ chặt vòng bi."
+
+• 最后再用电钻转动螺纹杆把轴承提取出来。 = "Cuối cùng dùng máy khoan xoay thanh ren để kéo vòng bi bị kẹt ra ngoài."
+
+• 真是太好用了。 = "Cách này thực sự rất hiệu quả và tiện lợi."
+• 太厉害了。 = "Đúng là quá thông minh."
+
+• 螺丝生锈腐蚀不要怕。 = "Đừng lo khi gặp những con ốc bị gỉ sét hoặc ăn mòn."
+
+• 可以先把原来的螺帽喷上除锈剂。 = "Trước tiên hãy xịt dung dịch tẩy gỉ lên phần ốc cũ."
+
+• 用钢丝刷打磨干净。 = "Dùng bàn chải sắt chà sạch lớp gỉ bám bên ngoài."
+
+• 接着再用打磨机把螺帽最上面一层生锈打磨掉。 = "Sau đó dùng máy mài loại bỏ lớp gỉ sét ở phần trên cùng của đai ốc."
+
+• 然后把螺母放上去。 = "Tiếp theo đặt một đai ốc mới lên vị trí đó."
+
+• 再然后就可以在螺母里面倒上吸热液。 = "Sau đó đổ dung dịch làm mát hoặc hấp thụ nhiệt vào bên trong đai ốc."
+
+• 接着等吸热液冷却就可以用扳手卡住螺母。 = "Đợi cho đai ốc nguội xuống rồi dùng cờ lê kẹp chặt vào."
+
+• 这样就可以把断掉的螺丝拧出来了。 = "Như vậy có thể dễ dàng vặn phần ốc bị gãy ra ngoài."
+
+• 你们觉得这个维修小技巧怎么样？ = "Các bạn thấy mẹo sửa chữa này có hữu ích không?"
+• 机油盖你能找到吧？ = "Nắp châm dầu động cơ thì chắc bạn tìm được chứ?"
+
+• 那你就能找到旁边这个长4厘米、宽3厘米的黑色小零件。 = "Ngay bên cạnh đó sẽ có một chi tiết nhỏ màu đen, dài khoảng 4cm và rộng khoảng 3cm."
+
+• 你手不自觉地拔掉了它的插头。 = "Hãy rút giắc cắm của bộ phận này ra."
+
+• 接着你去大舅那儿借了一个10件套套筒工具。 = "Sau đó chuẩn bị một bộ tuýp hoặc dụng cụ tháo lắp phù hợp."
+
+• 把它上面的固定螺丝拆了下来。 = "Tháo con ốc cố định phía trên ra."
+
+• 双手不停地左右晃动。 = "Lắc nhẹ qua lại bằng hai tay."
+
+• 一不小心把它抖了出来。 = "Rồi từ từ rút bộ phận đó ra ngoài."
+
+• 左眼一睁，就能发现它上面全是油泥和积碳。 = "Lúc này bạn sẽ thấy nó bám đầy cặn dầu và muội bẩn."
+
+• 已经把滤网完全堵完了。 = "Lưới lọc bên trong gần như đã bị tắc kín."
+
+• 你又一个不小心。 = "Tiếp theo hãy lấy dung dịch vệ sinh chuyên dụng."
+
+• 在我的橱窗里面买来了一瓶化清剂。 = "Chuẩn bị một chai dung dịch làm sạch chi tiết động cơ."
+
+• 朝着它上面就是一顿猛喷。 = "Xịt trực tiếp lên toàn bộ bề mặt cần vệ sinh."
+
+• 没想到清洗效果超乎想象。 = "Hiệu quả làm sạch thật sự vượt ngoài mong đợi."
+
+• 油泥和积碳都被溶解下来了。 = "Các lớp cặn dầu và chất bẩn được hòa tan nhanh chóng."
+
+• 滤网都全部露出来了。 = "Phần lưới lọc sạch sẽ và hiện rõ trở lại."
+
+• 清洗干净以后。 = "Sau khi vệ sinh sạch hoàn toàn."
+
+• 用纸巾擦一擦。 = "Dùng khăn giấy lau khô."
+
+• 恢复了原厂状态。 = "Bộ phận này gần như trở lại trạng thái như mới."
+
+• 聪明的你又把它装了回去。 = "Sau đó lắp lại đúng vị trí ban đầu."
+
+• 那么恭喜你。 = "Và xin chúc mừng."
+
+• 原来你的车发动机。 = "Những hiện tượng khó chịu trên động cơ như:"
+
+• 冷车热车启动困难。 = "Khó khởi động khi máy nguội hoặc máy nóng."
+
+• 动力下降。 = "Xe bị giảm công suất."
+
+• 油耗飙升的故障情况。 = "Mức tiêu hao nhiên liệu tăng cao."
+
+• 居然全部消失了。 = "Đều có thể được cải thiện đáng kể."
+
+• 你一脸开心地跑过来。 = "Lúc đó chắc chắn bạn sẽ rất hài lòng."
+
+• 给我点了一个小心心。 = "Và đừng quên để lại một lượt yêu thích nhé."
+
+• 才知道它是VVT电磁阀。 = "Thì ra bộ phận này chính là van điện từ VVT."
+
+• 它的作用是通过发动机电脑控制它通断机油。 = "Nó được ECU điều khiển để kiểm soát dòng dầu đi qua hệ thống."
+
+• 驱动VVT机构改变气门正时。 = "Qua đó điều chỉnh thời điểm đóng mở xupap của động cơ."
+
+• 让车子怠速稳、提速快、更省油。 = "Giúp xe chạy êm hơn, tăng tốc tốt hơn và tiết kiệm nhiên liệu hơn."
+
+• 如果它脏了或者坏了。 = "Nếu bộ phận này bị bẩn hoặc hư hỏng."
+
+• 就会出现发动机异响。 = "Động cơ có thể xuất hiện tiếng kêu bất thường."
+
+• 油耗升高，动力下降。 = "Mức tiêu hao nhiên liệu tăng và công suất giảm."
+
+• 启动困难的故障现象。 = "Đồng thời gây hiện tượng khó khởi động."
+
+• 看到这里的大哥大姐能不能给我点一个关注。 = "Nếu thấy hữu ích, hãy cho mình một lượt theo dõi nhé."
+
+• 我会每天讲解汽车知识传递正能量视频。 = "Mình sẽ tiếp tục chia sẻ kiến thức ô tô hữu ích mỗi ngày."
+• 太厉害了。 = "Đúng là quá thông minh."
+
+• 摩托车启动器打滑不用换。 = "Bộ khởi động xe máy bị trượt cũng không cần thay mới."
+
+• 把启动器拆下来再把转轴切割开缝隙。 = "Tháo bộ khởi động ra rồi cắt một rãnh nhỏ trên trục quay."
+
+• 接着把脚踏装回去用电片插进去。 = "Sau đó lắp lại cần đạp và chèn một miếng thép mỏng vào khe vừa cắt."
+
+• 卡住在拧上螺丝固定防止打滑。 = "Siết chặt bằng ốc vít để cố định, giúp chống trượt hiệu quả."
+
+• 你们说这个维修方法如何? = "Các bạn thấy cách sửa chữa này có hữu ích không?"
+• 淘米水千万别倒了。 = "Nước vo gạo đừng vội đổ đi."
+
+• 它可还有大用处。 = "Nó vẫn còn rất nhiều công dụng hữu ích."
+
+• 倒上白醋。 = "Cho thêm một ít giấm trắng."
+
+• 再来一勺小苏打。 = "Tiếp theo cho một muỗng baking soda."
+
+• 家里抹布用时间长了。 = "Khăn lau trong nhà dùng lâu ngày."
+
+• 油油腻腻洗不干净。 = "Bám đầy dầu mỡ, rất khó giặt sạch."
+
+• 还有一股怪味。 = "Lại còn có mùi khó chịu."
+
+• 你把它放进去。 = "Hãy cho chiếc khăn vào dung dịch đó."
+
+• 浸泡十来分钟。 = "Ngâm khoảng mười phút."
+
+• 然后再轻轻揉一揉搓一搓。 = "Sau đó vò và chà nhẹ vài lần."
+
+• 抹布这样洗完跟新的一样。 = "Giặt theo cách này, chiếc khăn sẽ sạch như mới."
+
+• 还没有异味。 = "Đồng thời cũng không còn mùi hôi nữa."
+• 咱们烧水的水壶总是有水垢该怎么办。 = "Ấm đun nước trong nhà bị bám cặn vôi thì phải làm sao?"
+
+• 今天学会一招。 = "Hôm nay mình sẽ chia sẻ cho các bạn một mẹo đơn giản."
+
+• 非常地简单。 = "Cách làm cực kỳ dễ."
+
+• 在水壶中加上生姜和鸡蛋壳。 = "Cho vài lát gừng và vỏ trứng vào trong ấm."
+
+• 再倒一点白醋。 = "Sau đó đổ thêm một ít giấm trắng."
+
+• 加一点自来水。 = "Tiếp theo cho nước sạch vào."
+
+• 把水烧开后静置15分钟倒掉就可以了。 = "Đun sôi nước rồi để yên khoảng 15 phút, sau đó đổ bỏ."
+
+• 这样水壶很长时间都不会再生水垢了。 = "Làm như vậy, ấm nước sẽ lâu ngày không còn bị đóng cặn nữa."
+• 真是个天才。 = "Đúng là một thiên tài."
+
+• 像这样的大钢管如何快速无缝焊接到两条小钢管上。 = "Làm thế nào để hàn nhanh một ống thép lớn vào hai ống thép nhỏ mà không bị hở mối nối?"
+
+• 先用尺子给大钢管画两条直线。 = "Trước tiên dùng thước kẻ hai đường thẳng trên ống thép lớn."
+
+• 接着再沿着画好的线做标记。 = "Tiếp theo đánh dấu theo các đường đã vẽ."
+
+• 然后再把做好标记的钢管切割掉。 = "Sau đó cắt bỏ phần ống thép đã được đánh dấu."
+
+• 这样就可以完美无缝地把大钢管和小钢管焊接在一起了。 = "Như vậy có thể hàn ống thép lớn và ống thép nhỏ lại với nhau một cách khít và đẹp mắt."
+
+• 你们说怎么样？ = "Các bạn thấy cách này thế nào?"
 </glossary_idioms>
 
 <pronoun_consistency>
@@ -1092,37 +1750,78 @@ JSON array đúng {len(batch_segments)} phần tử, theo thứ tự, không mar
     raw_text = response.choices[0].message.content.strip()
     raw_text = raw_text.replace("```json", "").replace("```", "").strip()
 
-    translated = []
+    return _parse_ollama_response(raw_text, len(batch_segments))
 
-    # Thử parse là JSON array hoàn chỉnh
+
+def _parse_ollama_response(raw_text, expected_count):
+    raw_text = str(raw_text or "").strip()
+    if not raw_text:
+        return [""] * expected_count
+
+    raw_text = raw_text.replace("```json", "").replace("```", "").strip()
+
+    def normalize_item(item):
+        if item is None:
+            return ""
+        return str(item).strip()
+
+    # 1) Try strict JSON parse
     try:
         parsed = json.loads(raw_text)
         if isinstance(parsed, list):
-            translated = [str(x) for x in parsed]
+            return [normalize_item(x) for x in parsed][:expected_count] + [""] * max(0, expected_count - len(parsed))
     except Exception:
         pass
 
-    # Fallback: mỗi dòng có thể là 1 array hoặc 1 string
-    if not translated:
-        for line in raw_text.splitlines():
-            line = line.strip().rstrip(",")
-            if not line:
-                continue
-            try:
-                arr = json.loads(line)
-                if isinstance(arr, list):
-                    translated.extend(str(x) for x in arr)
-                elif isinstance(arr, str):
-                    translated.append(arr)
-            except Exception:
-                match = re.search(r'"(.+?)"', line)
-                if match:
-                    translated.append(match.group(1))
+    # 2) Try to extract the first JSON array from the text
+    try:
+        m = re.search(r"(\[.*\])", raw_text, re.S)
+        if m:
+            parsed = json.loads(m.group(1))
+            if isinstance(parsed, list):
+                return [normalize_item(x) for x in parsed][:expected_count] + [""] * max(0, expected_count - len(parsed))
+    except Exception:
+        pass
 
-    # Pad/truncate đúng size
-    if len(translated) < len(batch_segments):
-        translated.extend([""] * (len(batch_segments) - len(translated)))
-    return translated[: len(batch_segments)]
+    translated = []
+    for line in raw_text.splitlines():
+        line = line.strip().rstrip(",")
+        if not line:
+            continue
+
+        # Remove numbered or bullet prefixes like "1.", "-", "*"
+        line = re.sub(r"^\s*\d+\.\s*", "", line)
+        line = re.sub(r"^\s*[-*]\s*", "", line)
+
+        try:
+            item = json.loads(line)
+            if isinstance(item, list):
+                translated.extend(normalize_item(x) for x in item)
+                continue
+            if isinstance(item, str):
+                translated.append(item)
+                continue
+        except Exception:
+            pass
+
+        if line.startswith('"') and line.endswith('"'):
+            translated.append(line[1:-1].strip())
+            continue
+
+        quoted = re.findall(r'"([^"]+)"', line)
+        if quoted:
+            translated.extend(q.strip() for q in quoted)
+            continue
+
+        translated.append(line)
+
+    if not translated:
+        # Last resort: split by plain newlines and take nonempty text
+        translated = [part.strip() for part in raw_text.splitlines() if part.strip()]
+
+    if len(translated) < expected_count:
+        translated.extend([""] * (expected_count - len(translated)))
+    return translated[:expected_count]
 
 
 def translate_segments_with_ollama(segments, source_lang="zh", target_lang="vi"):
@@ -1208,9 +1907,8 @@ def translate_segments_with_ollama(segments, source_lang="zh", target_lang="vi")
             text = clean_text(raw)
 
         if is_bad_translation(text, target_lang=target_lang):
-            # Câu hallucination → để rỗng để TTS skip
-            # Câu dịch fail thật → fallback ngắn
-            text = "" if skip else FALLBACK_TEXT
+            # Dịch không rõ / sai → bỏ qua để TTS skip
+            text = ""
 
         # Safety cap: LLM đã thấy [budget=Xs] trong prompt nên dịch tự rút.
         # Đây chỉ là chốt chặn nếu LLM trả câu quá dài (>18 từ).
@@ -1917,16 +2615,6 @@ def _sanitize_tts_text(text):
     return text
 
 
-# Fallback voices theo ngôn ngữ (dùng khi voice chính fail liên tục)
-_FALLBACK_VOICES = {
-    "vi": ["vi-VN-HoaiMyNeural", "vi-VN-NamMinhNeural"],
-    "en": ["en-US-AriaNeural", "en-US-GuyNeural"],
-    "zh": ["zh-CN-XiaoxiaoNeural", "zh-CN-YunxiNeural"],
-    "ja": ["ja-JP-NanamiNeural", "ja-JP-KeitaNeural"],
-    "ko": ["ko-KR-SunHiNeural", "ko-KR-InJoonNeural"],
-}
-
-
 async def make_tts_audio(text, voice, rate, output_path, retries=3):
     import asyncio
 
@@ -1950,11 +2638,8 @@ async def make_tts_audio(text, voice, rate, output_path, retries=3):
             t = t + " ạ."
         return t
 
-    # Build danh sách voice thử: voice chính + fallback cùng ngôn ngữ
-    voice_lang = next((v["lang"] for v in VOICE_OPTIONS if v["value"] == voice), "vi")
-    fallback_list = _FALLBACK_VOICES.get(voice_lang, [])
-    # Thử voice chính trước, sau đó fallback (loại trùng)
-    voices_to_try = [voice] + [v for v in fallback_list if v != voice]
+    # Chỉ retry cùng voice đã chọn, không tự động chuyển voice khi gặp lỗi.
+    voices_to_try = [voice]
 
     last_err = None
     for attempt in range(retries):
@@ -2143,8 +2828,8 @@ async def process_video(
                 print(f"[Whisper] skip no_speech={no_speech:.2f}: {text[:40]}")
                 continue
 
-            # Model không tự tin → bỏ
-            if avg_logprob < -1.0:
+            # Model không tự tin → bỏ (trừ khi WHISPER_KEEP_ALL_SEGMENTS=true)
+            if not WHISPER_KEEP_ALL_SEGMENTS and avg_logprob < WHISPER_MIN_LOGPROB:
                 print(f"[Whisper] skip low_logprob={avg_logprob:.2f}: {text[:40]}")
                 continue
 
@@ -2185,6 +2870,8 @@ async def process_video(
 
         video_duration = float(video.duration)
 
+        tts_cutoff = video_duration  # TTS segments can use full video duration
+
         for i, seg in enumerate(translated_segments):
             try:
                 text = clean_text(seg.get("text", ""))
@@ -2195,7 +2882,8 @@ async def process_video(
                     continue
 
                 if is_bad_translation(text):
-                    text = FALLBACK_TEXT
+                    print(f"TTS SKIP {i}: bad translation or unclear text (zh={seg.get('original_text','')[:30]})")
+                    continue
 
                 # Safety cap: LLM đã rút theo budget rồi, đây chỉ là chốt chặn
                 text = shorten_words(text, max_words=18)
@@ -2265,8 +2953,9 @@ async def process_video(
                 start_time = seg_start
 
                 # Nếu start đã vượt video → bỏ
-                if start_time >= video_duration:
+                if start_time >= tts_cutoff:
                     audio_clip.close()
+                    print(f"TTS SKIP {i}: start={start_time:.1f}s >= tts_cutoff={tts_cutoff:.1f}s")
                     continue
 
                 # Cắt audio nếu nó tràn vào câu sau quá xa (>30% câu sau)
@@ -2277,14 +2966,12 @@ async def process_video(
                     overlap_budget = next_start + max(0.4, next_dur * 0.3)
                     max_end = overlap_budget
                 else:
-                    max_end = video_duration
+                    max_end = tts_cutoff  # Câu cuối: không cho vượt tts_cutoff
 
                 if start_time + audio_clip.duration > max_end:
                     audio_clip = audio_clip.subclipped(0, max(0.3, max_end - start_time))
 
-                # Cắt phần thừa ngoài video
-                if start_time + audio_clip.duration > video_duration:
-                    audio_clip = audio_clip.subclipped(0, video_duration - start_time)
+
 
                 end_time = start_time + audio_clip.duration
                 current_end = end_time  # giữ để theo dõi nhưng không dùng push start
@@ -2324,6 +3011,7 @@ async def process_video(
         if not audio_clips:
             raise Exception("No valid TTS audio generated")
 
+
         # ────────────────────────────────────────────────────────────────────
         # MERGE: render full audio track ra WAV trước, RỒI giải phóng moviepy,
         # cuối cùng dùng ffmpeg trực tiếp để mux video (KHÔNG re-encode video).
@@ -2338,7 +3026,7 @@ async def process_video(
         #      • audio_mode="music" → chỉ nhạc nền (đã tách bỏ vocal tiếng Trung)
         #   3. Nhạc nền user upload — luôn loop nếu user gửi music_path
         # ────────────────────────────────────────────────────────────────────
-        layers = list(audio_clips)  # TTS layer
+        layers = list(audio_clips)  # TTS layer (including closing message)
 
         # Layer 2: original audio
         if keep_original_audio:
@@ -2597,10 +3285,43 @@ async def preview_voice(
     )
 
 
+def _download_video_from_url(video_url: str) -> str:
+    try:
+        import yt_dlp
+    except ImportError:
+        raise HTTPException(
+            status_code=500,
+            detail="Video URL support requires yt-dlp. Install yt-dlp in requirements.txt.",
+        )
+
+    safe_filename = f"video_{uuid.uuid4().hex}.mp4"
+    output_path = os.path.join(UPLOAD_FOLDER, safe_filename)
+
+    ydl_opts = {
+        "outtmpl": output_path,
+        "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best",
+        "merge_output_format": "mp4",
+        "noplaylist": True,
+        "quiet": True,
+        "no_warnings": True,
+        "ignoreerrors": False,
+        "restrictfilenames": True,
+    }
+
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        ydl.download([video_url])
+
+    if not os.path.exists(output_path):
+        raise HTTPException(status_code=500, detail="Failed to download video from URL")
+
+    return output_path
+
+
 @app.post("/upload-video")
 async def upload_video(
     background_tasks: BackgroundTasks,
-    file: UploadFile = File(...),
+    file: UploadFile | None = File(None),
+    videoUrl: str | None = Form(None),
     voice: str = Form(DEFAULT_VOICE),
     rate: str = Form(DEFAULT_RATE),
     # Tham số khớp 1-1 với FE handleExport()
@@ -2646,11 +3367,21 @@ async def upload_video(
     except Exception:
         zoom_val = 1.0
 
-    # Lưu video chính
-    safe_filename = (file.filename or f"video_{uuid.uuid4().hex}.mp4").replace("/", "_").replace("\\", "_")
-    file_path = os.path.join(UPLOAD_FOLDER, safe_filename)
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    # Nếu có videoUrl thì tải video từ URL trước khi xử lý.
+    if videoUrl:
+        videoUrl = videoUrl.strip()
+        if not videoUrl:
+            raise HTTPException(status_code=400, detail="videoUrl is empty")
+        file_path = await run_in_threadpool(_download_video_from_url, videoUrl)
+        safe_filename = os.path.basename(file_path)
+    else:
+        if file is None or not getattr(file, "filename", None):
+            raise HTTPException(status_code=400, detail="No video file or videoUrl provided")
+
+        safe_filename = (file.filename or f"video_{uuid.uuid4().hex}.mp4").replace("/", "_").replace("\\", "_")
+        file_path = os.path.join(UPLOAD_FOLDER, safe_filename)
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
 
     # Lưu logo (optional)
     logo_path = None

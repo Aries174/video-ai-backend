@@ -1,0 +1,27 @@
+﻿[Script Info]
+Title: AI Subtitle
+ScriptType: v4.00+
+PlayResX: 720
+PlayResY: 1280
+ScaledBorderAndShadow: yes
+WrapStyle: 0
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: BoxStyle,Times New Roman,45,&H00000000,&H00FFFFFF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,0,0,5,0,0,0,1
+Style: TextStyle,Times New Roman,45,&H00000000,&H00FFFFFF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,0,0,5,0,0,0,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:00.00,0:00:00.77,BoxStyle,,0,0,0,,{\an7\pos(19,940)\fs1\1c&Hffffff\1a&H00&\3a&HFF&\4a&HFF&\bord0\shad0\p1}m 8 0 l 668 0 b 676 0 676 0 676 8 l 676 129 b 676 137 676 137 668 137 l 8 137 b 0 137 0 137 0 129 l 0 8 b 0 0 0 0 8 0{\p0}
+Dialogue: 1,0:00:00.00,0:00:00.77,TextStyle,,0,0,0,,{\an5\pos(357,1008)\fs45\fnTimes New Roman\1c&H00000000\3c&H000000&\bord1\shad0\q2}Thật tiện lợi!
+Dialogue: 0,0:00:00.82,0:00:03.57,BoxStyle,,0,0,0,,{\an7\pos(19,940)\fs1\1c&Hffffff\1a&H00&\3a&HFF&\4a&HFF&\bord0\shad0\p1}m 8 0 l 668 0 b 676 0 676 0 676 8 l 676 129 b 676 137 676 137 668 137 l 8 137 b 0 137 0 137 0 129 l 0 8 b 0 0 0 0 8 0{\p0}
+Dialogue: 1,0:00:00.82,0:00:03.57,TextStyle,,0,0,0,,{\an5\pos(357,1008)\fs45\fnTimes New Roman\1c&H00000000\3c&H000000&\bord1\shad0\q2}Khi trang trí góc tường gặp\Nphải tấm ván không lắp vừa,
+Dialogue: 0,0:00:03.62,0:00:04.23,BoxStyle,,0,0,0,,{\an7\pos(19,940)\fs1\1c&Hffffff\1a&H00&\3a&HFF&\4a&HFF&\bord0\shad0\p1}m 8 0 l 668 0 b 676 0 676 0 676 8 l 676 129 b 676 137 676 137 668 137 l 8 137 b 0 137 0 137 0 129 l 0 8 b 0 0 0 0 8 0{\p0}
+Dialogue: 1,0:00:03.62,0:00:04.23,TextStyle,,0,0,0,,{\an5\pos(357,1008)\fs45\fnTimes New Roman\1c&H00000000\3c&H000000&\bord1\shad0\q2}Đừng lo.
+Dialogue: 0,0:00:04.28,0:00:07.63,BoxStyle,,0,0,0,,{\an7\pos(19,940)\fs1\1c&Hffffff\1a&H00&\3a&HFF&\4a&HFF&\bord0\shad0\p1}m 8 0 l 668 0 b 676 0 676 0 676 8 l 676 129 b 676 137 676 137 668 137 l 8 137 b 0 137 0 137 0 129 l 0 8 b 0 0 0 0 8 0{\p0}
+Dialogue: 1,0:00:04.28,0:00:07.63,TextStyle,,0,0,0,,{\an5\pos(357,1008)\fs45\fnTimes New Roman\1c&H00000000\3c&H000000&\bord1\shad0\q2}Có thể dùng thước kẻ vẽ hình\Ntam giác lên hai bên tấm ván,
+Dialogue: 0,0:00:07.68,0:00:09.84,BoxStyle,,0,0,0,,{\an7\pos(19,940)\fs1\1c&Hffffff\1a&H00&\3a&HFF&\4a&HFF&\bord0\shad0\p1}m 8 0 l 668 0 b 676 0 676 0 676 8 l 676 129 b 676 137 676 137 668 137 l 8 137 b 0 137 0 137 0 129 l 0 8 b 0 0 0 0 8 0{\p0}
+Dialogue: 1,0:00:07.68,0:00:09.84,TextStyle,,0,0,0,,{\an5\pos(357,1008)\fs45\fnTimes New Roman\1c&H00000000\3c&H000000&\bord1\shad0\q2}Sau đó cắt bỏ phần thừa để\Nlắp vừa hoàn hảo,
+Dialogue: 0,0:00:09.89,0:00:11.12,BoxStyle,,0,0,0,,{\an7\pos(19,940)\fs1\1c&Hffffff\1a&H00&\3a&HFF&\4a&HFF&\bord0\shad0\p1}m 8 0 l 668 0 b 676 0 676 0 676 8 l 676 129 b 676 137 676 137 668 137 l 8 137 b 0 137 0 137 0 129 l 0 8 b 0 0 0 0 8 0{\p0}
+Dialogue: 1,0:00:09.89,0:00:11.12,TextStyle,,0,0,0,,{\an5\pos(357,1008)\fs45\fnTimes New Roman\1c&H00000000\3c&H000000&\bord1\shad0\q2}Quả là thông minh.
