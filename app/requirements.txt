@@ -11,3 +11,6 @@ torchaudio
 numpy
 yt-dlp
 demucs
+requests
+easyocr
+opencv-python-headless

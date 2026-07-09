@@ -22,6 +22,8 @@ from dotenv import load_dotenv
 
 import whisper
 import edge_tts
+from app.services.capcut_tts import capcut_tts_generate, get_resource_id as capcut_get_resource_id
+from app.services.chinese_text_remover import remove_chinese_text_from_video
 from openai import OpenAI
 
 from moviepy import (
@@ -131,25 +133,41 @@ DEFAULT_RATE = "+0%"
 # ---------------------------------------------------------------------------
 # VOICE_OPTIONS — multi-language để khớp với FE LANGUAGES dropdown
 # Mỗi entry có:
-#   - value: edge-tts voice id
+#   - value: edge-tts voice id (hoặc capcut:<voice_type> cho CapCut voices)
 #   - label: hiển thị FE
 #   - lang : mã ngôn ngữ ngắn (vi/en/zh/ja/ko) để filter theo dropdown
 # ---------------------------------------------------------------------------
 VOICE_OPTIONS = [
-    # Vietnamese
+    # Vietnamese — Edge TTS
     {"value": "vi-VN-HoaiMyNeural",  "label": "HN - Hoài My (Nữ)",   "lang": "vi"},
     {"value": "vi-VN-NamMinhNeural", "label": "HN - Nam Minh (Nam)", "lang": "vi"},
-    # English
+
+    # Vietnamese — CapCut TTS (API không chính thức)
+    {"value": "capcut:BV074_streaming",     "label": "🎬 Cô Gái Hoạt Ngôn (CapCut)",    "lang": "vi"},
+    {"value": "capcut:BV075_streaming",     "label": "🎬 Thanh Niên Tự Tin (CapCut)",    "lang": "vi"},
+    {"value": "capcut:BV421_vivn_streaming", "label": "🎬 Nhỏ Ngọt Ngào (CapCut)",       "lang": "vi"},
+    {"value": "capcut:BV562_streaming",     "label": "🎬 Mai (CapCut)",                  "lang": "vi"},
+    {"value": "capcut:vi_female_huong",     "label": "🎬 Giọng Nữ Phổ Thông (CapCut)",  "lang": "vi"},
+    {"value": "capcut:BV074_streaming_dsp", "label": "🎬 Giọng Bé (CapCut)",             "lang": "vi"},
+    {"value": "capcut:BV075_streaming_vibrato_dsp", "label": "🎬 Việt Méo (CapCut)",     "lang": "vi"},
+    {"value": "capcut:BV075_streaming_demon_dsp",   "label": "🎬 Kenny Đại Đế (CapCut)", "lang": "vi"},
+    {"value": "capcut:multi_female_richgirl_uranus_bigtts",  "label": "🎬 Review Phim (CapCut)",  "lang": "vi"},
+    {"value": "capcut:multi_female_yangguangnv_uranus_bigtts", "label": "🎬 Ban Mai (CapCut)",   "lang": "vi"},
+    {"value": "capcut:multi_female_sisi_uranus_bigtts",       "label": "🎬 Bản Tin Nữ (CapCut)", "lang": "vi"},
+    {"value": "capcut:multi_female_peiqi_uranus_bigtts",      "label": "🎬 Gái Mới Lớn (CapCut)", "lang": "vi"},
+    {"value": "capcut:multi_male_felipe_uranus_bigtts",       "label": "🎬 Giọng Nam Trầm (CapCut)", "lang": "vi"},
+
+    # English — Edge TTS
     {"value": "en-US-AriaNeural",     "label": "US - Aria (Nữ)",      "lang": "en"},
     {"value": "en-US-GuyNeural",      "label": "US - Guy (Nam)",      "lang": "en"},
     {"value": "en-GB-SoniaNeural",    "label": "UK - Sonia (Nữ)",     "lang": "en"},
-    # Chinese
+    # Chinese — Edge TTS
     {"value": "zh-CN-XiaoxiaoNeural", "label": "CN - Xiaoxiao (Nữ)",  "lang": "zh"},
     {"value": "zh-CN-YunxiNeural",    "label": "CN - Yunxi (Nam)",    "lang": "zh"},
-    # Japanese
+    # Japanese — Edge TTS
     {"value": "ja-JP-NanamiNeural",   "label": "JP - Nanami (Nữ)",    "lang": "ja"},
     {"value": "ja-JP-KeitaNeural",    "label": "JP - Keita (Nam)",    "lang": "ja"},
-    # Korean
+    # Korean — Edge TTS
     {"value": "ko-KR-SunHiNeural",    "label": "KR - Sun-Hi (Nữ)",    "lang": "ko"},
     {"value": "ko-KR-InJoonNeural",   "label": "KR - In-Joon (Nam)",  "lang": "ko"},
 ]
@@ -1598,6 +1616,830 @@ Idiom & slang TUYỆT ĐỐI không dịch chữ-một:
 • 这样就可以完美无缝地把大钢管和小钢管焊接在一起了。 = "Như vậy có thể hàn ống thép lớn và ống thép nhỏ lại với nhau một cách khít và đẹp mắt."
 
 • 你们说怎么样？ = "Các bạn thấy cách này thế nào?"
+• 在轮胎破损的位置穿一些绑带。 = "Luồn vài sợi dây rút nhựa qua vị trí lốp bị rách."
+
+• 用火把绑带头完全烤融化。 = "Dùng nhiệt làm nóng phần đầu dây rút cho nhựa nóng chảy hoàn toàn."
+
+• 然后再用刀片将其刮平。 = "Sau đó dùng dao gạt phẳng bề mặt vừa nóng chảy."
+
+• 紧接着再次加热。 = "Tiếp tục gia nhiệt thêm một lần nữa."
+
+• 使其和车胎完全融为一体。 = "Để phần nhựa hòa quyện hoàn toàn với bề mặt lốp."
+
+• 最后再喷一些溶剂。 = "Cuối cùng phun thêm một lớp dung dịch xử lý bề mặt."
+
+• 便可修复破损的车胎。 = "Như vậy là có thể khắc phục phần lốp bị hư hỏng."
+• 很多人往这么小的方管里面安装螺母。 = "Nhiều người gặp khó khăn khi lắp đai ốc vào bên trong những thanh thép hộp có kích thước nhỏ như thế này."
+
+• 手塞不进去的时候。 = "Khi không thể đưa tay vào bên trong."
+
+• 钳子也够不着。 = "Ngay cả kìm cũng không với tới được."
+
+• 那就可以用这个小妙招。 = "Lúc đó bạn có thể áp dụng mẹo nhỏ này."
+
+• 在螺丝刀头上放一根螺栓。 = "Đặt một con bu lông lên đầu tua vít."
+
+• 将其固定到上面。 = "Cố định nó chắc chắn vào đầu tua vít."
+
+• 再卡住需要拧的螺母。 = "Sau đó giữ lấy đai ốc cần lắp."
+
+• 这样就算再小的空间。 = "Nhờ vậy, dù không gian có chật hẹp đến đâu."
+
+• 也能快速拧上。 = "Bạn vẫn có thể lắp và siết đai ốc một cách nhanh chóng."
+
+• 非常方便。 = "Cực kỳ tiện lợi."
+这具对时1996年口碑炸裂的经典科幻巨智, = "Đây là siêu phẩm khoa học viễn tưởng kinh điển năm 1996,"
+以7500万美元的制作成本, = "Với kinh phí 75 triệu USD,"
+黄蓝全球8.17亿美元票房, = "Thu về 817 triệu USD toàn cầu,"
+一举登顶当年全球票房绑手, = "Đứng đầu doanh thu toàn cầu năm đó,"
+铸救了影史上一段不可复制的商业审划。 = "Tạo nên huyền thoại thương mại độc nhất lịch sử điện ảnh."
+它拉开了外星入侵题材的黄金时代, = "Mở ra kỷ nguyên vàng cho thể loại xâm lược ngoài hành tinh,"
+用一连串震撼镜头刻下了永恒烙印。 = "Loạt cảnh ấn tượng đã để lại dấu ấn vĩnh cửu."
+其中剧情光束轰然摧毁核心地标建筑的震撼画面, = "Cảnh tia sáng hủy diệt các tòa nhà biểu tượng gây chấn động,"
+至今仍是在那天领域争相致敬的标杆镜头。 = "Đến nay vẫn là cảnh quay chuẩn mực được nhiều phim học hỏi."
+這不做品用鐵一般的實力證明 = "Tác phẩm này đã chứng minh sức mạnh vượt trội."
+真正的經典既能稱霸票房榜 = "Kinh điển thực sự không chỉ thống trị phòng vé"
+也能無懼實況沖刷 = "mà còn vượt thời gian"
+化作整整一代人共同的一幕記憶 = "thành ký ức chung của cả thế hệ."
+今天就讓我們一起深度拆解這部不朽科幻災難大片 = "Hôm nay, hãy cùng phân tích siêu phẩm khoa học viễn tưởng bất hủ này:"
+獨立日 = "Ngày Độc Lập."
+巫視開篇 = "Mở đầu,"
+全世界技術陷入巨型外星造物籠罩的無盡黃孔之中 = "Thế giới chìm trong hoảng loạn dưới bóng vật thể ngoài hành tinh."
+一艘直定近60公里的巨型外星巨劍衝破天際 = "Phi thuyền khổng lồ, đường kính gần 60km, xé toạc bầu trời,"
+闖入地球大氣層 = "Xâm nhập khí quyển Trái Đất,"
+漫天裂火籠罩整片天空 = "Lửa dữ bao trùm cả bầu trời."
+從未見過這般震撼意象的民眾瞬間慌亂不已 = "Người dân chưa từng thấy cảnh này lập tức hoảng loạn."
+城市街道上車輛接連相當, = "Xe cộ trên phố va chạm liên tiếp."
+望著這天必日的龐大外星飛船 = "Nhìn phi thuyền khổng lồ che kín bầu trời,"
+眾人全都帶領原地, = "Mọi người đều đứng sững,"
+反應過來後紛紛瘋狂逃竄 = "Định thần lại, họ điên cuồng bỏ chạy."
+整座城市瞬間陷入巨大恐慌 = "Cả thành phố chìm trong hoảng loạn tột độ."
+想關高層敘述開啟全網公開講話, = "Giới chức nhanh chóng phát biểu công khai,"
+盡力安撫黃恐怖案的大眾 = "Cố trấn an công chúng đang sợ hãi."
+可面對這般氣勢龐薄的外星戰艦 = "But trước chiến hạm ngoài hành tinh hùng vĩ,"
+恐懼早已四處蔓延, = "Nỗi sợ đã lan rộng khắp nơi."
+不少人急忙收拾行囊 = "Nhiều người vội vã dọn hành lý,"
+打算遠離危險地帶 = "Định rời khỏi vùng nguy hiểm."
+房間流傳多年的外星萊克傳聞就此成真 = "Tin đồn về người ngoài hành tinh bấy lâu nay đã thành sự thật."
+人群之中心態各不相同, = "Tâm lý đám đông có sự khác nhau,"
+有人慌亂逃命 = "Kẻ hoảng loạn bỏ chạy,"
+也有部分人毫不畏懼, = "Nhưng một số người không hề sợ hãi,"
+聚集在高樓天灘, = "Họ tụ tập trên các sân thượng tòa nhà chọc trời,"
+高距標派迎接天外生靈降臨 = "Giơ biểu ngữ chào đón sinh vật ngoài hành tinh."
+計算及工程師大衛友人破譯出隱藏在衛星信號裡的秘密訊息 = "Lúc này, kỹ sư David Levinson giải mã thông điệp bí mật ẩn trong tín hiệu vệ tinh,"
+這才得知降臨地球的外星艦船艘足足有實物搜之多 = "Mới biết chiến hạm đổ bộ Trái Đất có tới hơn mười chiếc,"
+技術停靠在全球各大繁華城市上空 = "Chúng đã vào vị trí ngay trên các thành phố lớn sầm uất toàn cầu."
+一旦他們完成全部部署, = "Một khi hoàn tất việc triển khai,"
+就會對整片大地發起全面攻勢 = "Chúng sẽ tấn công toàn diện Trái Đất."
+既是人類賴以生存的家園文明 = "Nền văn minh và quê hương của nhân loại"
+或將迎來滅頂之災, = "Đứng trước nguy cơ bị diệt vong."
+大衛心急如焚 = "David nóng lòng như lửa đốt,"
+立刻帶的家人趕往核心指揮重地 = "Anh lập tức đưa gia đình đến trung tâm chỉ huy đầu não,"
+想要把這場巨大危機如實上報, = "Muốn báo cáo khẩn cấp nguy cơ cực lớn này,"
+可惜一切都為十一晚 = "Nhưng mọi thứ dường như đã quá muộn."
+地面防衛力量抱著友好溝通的想法 = "Lực lượng phòng vệ mặt đất muốn giao tiếp hòa bình,"
+派出專用通航飛行器靠近外星巨劍 = "Cử máy bay chuyên dụng tiếp cận phi thuyền ngoài hành tinh,"
+試圖藉助光影訊號建立交流 = "Thử dùng tín hiệu ánh sáng để thiết lập liên lạc."
+可這份滿槍善意並未得到回應 = "Nhưng thiện chí của loài người không được đáp lại,"
+外星戰艦直接發射高能激光 = "Chiến hạm ngoài hành tinh bắn thẳng tia laser năng lượng cao,"
+瞬間將飛行器徹底摧毀, = "Phá hủy hoàn toàn chiếc máy bay trong chớp mắt,"
+敵意展露無遺 = "Lộ rõ sự thù địch."
+人類與天外文明的首次大戰正式拉開帷幕 = "Cuộc chiến đầu tiên giữa nhân loại và nền văn minh ngoài hành tinh chính thức bắt đầu."
+外星飞船底部舱门环环开启, = "Cửa khoang đáy của phi thuyền khổng lồ từ từ mở ra,"
+幽兰色强光铺满大地, = "Ánh sáng xanh tím bao phủ mặt đất,"
+一道毁灭性光著著然落下 = "Một luồng sáng hủy diệt giáng xuống."
+树千尺高的摩天楼与如同纸片般轟然倒塌, = "Những tòa nhà chọc trời cao hàng nghìn thước đổ sập như giấy,"
+熊熊烈火如同潮水般席卷整座城市 = "Biển lửa dữ dội như sóng thần càn quét qua thành phố."
+强悍的冲击波似已摧毁周遭一切, = "Sóng xung kích cực mạnh phá hủy mọi thứ xung quanh,"
+人们拼尽全力四处逃亡, = "Người dân cố gắng chạy trốn bằng mọi giá,"
+却依旧难以躲过灾难降临 = "Nhưng vẫn khó lòng thoát khỏi thảm họa kinh hoàng."
+有人奮力掙扎求生, = "Có người vật lộn để tìm sự sống,"
+有人滿心絕望坦然接受 = "Có người lại tuyệt vọng chấp nhận số phận."
+緊接著又遇到強力激光轟擊核心指揮建築中心 = "Ngay sau đó, tia laser cực mạnh nhắm thẳng vào trung tâm chỉ huy đầu não,"
+建築當場畫子飛揮 = "Tòa nhà lập tức bị san phẳng thành tro bụi."
+極右專屬應急專機腳性躲過衝擊 = "Chiếc chuyên cơ khẩn cấp của Tổng thống may mắn thoát nạn,"
+倉皇緊急撤離險境, = "Vội vã sơ tán khỏi vùng nguy hiểm."
+端端數秒之內 = "Chỉ trong vòng vài giây,"
+半鬥城市技術淪為斷壁殘源 = "Nửa thành phố đã biến thành đống đổ nát hoang tàn."
+慌亂奔逃的人群裡, = "Giới dòng người hoảng loạn chạy trốn,"
+一位母親緊緊抱著孩子拼命前行 = "Một người mẹ ôm chặt con mình chạy thục mạng."
+危险步步逼近, = "Nguy hiểm rình rập ngay sau lưng,"
+他集中生日踹開尚未完工的隧道圍擋, = "Cô dồn sức đạp đổ hàng rào của một đường hầm đang thi công,"
+帶著孩子敘述藏身其中, = "Đưa con trốn vào bên trong,"
+還急忙呼喊自家狗狗快跑, = "Đồng thời cuống quýt gọi chú chó của gia đình chạy theo."
+就在危難降臨的岔那, = "Ngay khoảnh khắc ngọn lửa ập đến,"
+小狗也縱身跳進隧道躲了起來。 = "Chú chó cũng kịp phóng người vào đường hầm ẩn nấp."
+等到天地間的動靜徹底平息, = "Khi mọi chấn động bên ngoài hoàn toàn lắng xuống,"
+繁華都市早已滿目創意, = "Đô thị phồn hoa giờ đã hoang tàn,"
+整片區域僅是廢墟, = "Khắp nơi chỉ còn là đống đổ nát,"
+唯有正對母子和一隻小狗僥倖存活下來。 = "Chỉ có hai mẹ con và chú chó là may mắn sống sót."
+地面防衛隊伍敘述集結地量準備迎戰, = "Lực lượng phòng vệ mặt đất nhanh chóng tập hợp để chuẩn bị nghênh chiến,"
+人類和天外一族的對戰正式開啟, = "Cuộc đối đầu chính thức khai màn."
+轰入驾驶战机的人员望的眼前遮天闭日的巨型飞行器 = "Các phi công chiến đấu nhìn phi thuyền khổng lồ che kín bầu trời,"
+内心满是震撼, = "Trong lòng không khỏi chấn động tột cùng,"
+可危及局势容不得半分迟疑 = "Nhưng tình thế nguy cấp không cho phép họ chần chừ."
+随着前线指挥下达指令, = "Ngay khi lệnh tấn công từ tiền tuyến được phát ra,"
+大批作战 = "Đội hình"
+战机迅速瞄准敌方目标 = "Các chiến cơ lập tức khóa mục tiêu địch,"
+无数弹药潮着巨型外星飞行器很很康惧 = "Vô số tên lửa bắn xối xả vào phi thuyền khổng lồ ngoài hành tinh."
+可战况远没有预想中顺利, = "Tuy nhiên, trận chiến không diễn ra suôn sẻ như mong đợi,"
+所有攻击落在对方身上 = "Tất cả các đòn tấn công dội vào phi thuyền địch"
+就像雨滴击打在坚硬玻璃上一般, = "Chỉ như những giọt nước đập vào tấm kính cường lực cứng nhắc,"
+起不到丝毫作用 = "Hoàn toàn vô tác dụng."
+原來這艘巨型飛行器外層 = "Hóa ra, lớp vỏ ngoài của con tàu khổng lồ này"
+籠罩了一層肩不可催的能量防護屏障 = "Được bảo vệ bởi một lá chắn năng lượng vô cùng kiên cố."
+首輪進攻徹底失利 = "Đợt tấn công đầu tiên thất bại hoàn toàn,"
+戰機編隊立刻調整方位 = "Biển đội chiến cơ lập tức điều chỉnh hướng"
+再度發起攻勢 = "Để tiếp tục mở đợt công kích mới,"
+接連射出多枚彈藥 = "Liên tiếp bắn ra nhiều loạt tên lửa,"
+結局依舊毫無改變 = "Nhưng kết cục vẫn không hề thay đổi."
+Come on, = "Cố lên,"
+come on! = "bắn đi chứ!"
+眼看距離敵方飛行器越來越近 = "Nhận thấy khoảng cách với phi thuyền địch ngày càng thu hẹp,"
+飛行員聯盟操控戰機向上攀升 = "Các phi công kéo cần điều khiển cho máy bay bay vút lên cao."
+其中一架戰機沒能及時避讓 = "Một chiếc chiến cơ trong số đó do không kịp né tránh"
+直直撞上防護屏障 = "Đã đâm sầm vào lá chắn bảo vệ,"
+請客間機身損毀 = "Nổ tung thành trăm mảnh,"
+人員不幸遇難, = "Phi công hy sinh anh dũng."
+其餘戰機不敢再有絲毫鬆懈 = "Những máy bay khác không dám lơ là một giây nào nữa,"
+急忙想要撤離這片危險空域, = "Vội vã tìm đường rút lui khỏi vùng không phận nguy hiểm này,"
+卻早已措施最佳時機 = "Nhưng họ đã để lỡ mất thời cơ tốt nhất."
+無數小型歪行戰機從巨型母艦中封用而出 = "Vô số máy bay tiêm kích mini ùa ra từ tàu mẹ khổng lồ,"
+朝著人類戰機展開猛烈反擊 = "Tấn công dồn dập vào phi đội của loài người."
+雙方交鋒瞬間, = "Ngay khi hai bên giáp lá cà,"
+人類戰機接連受損落敗 = "Chiến cơ của loài người liên tục bị bắn hạ,"
+敵方戰機卻依舊玩毫無損 = "Trong khi máy bay địch không hề hấn gì."
+就連這些小型飛行器, = "Hóa ra ngay cả những chiếc tiêm kích nhỏ đó"
+也都配備著穩固的防護解藉 = "Cũng được trang bị lớp lá chắn năng lượng kiên cố."
+雙方科技實力差距懸殊 = "Khoảng cách về trình độ công nghệ quá lớn,"
+人類這邊的作戰力量根本難以抗衡 = "Lực lượng phòng vệ của loài người hoàn toàn bất lực không thể kháng cự."
+後方統籌據點指能眼睜睜看著前線戰機接連受損 = "Bộ chỉ huy ở hậu phương chỉ biết trố mắt nhìn các chiến cơ tiền tuyến rụng rơi,"
+卻沒有有效的應對辦法 = "Mà chẳng có bất kỳ phương án ứng phó hiệu quả nào."
+高層建廠當即下達指令 = "Cấp cao ngay lập tức ra lệnh,"
+讓前線作戰人員儘快撤離戰場 = "Yêu cầu toàn bộ lực lượng tiền tuyến nhanh chóng rút khỏi chiến trường."
+和面對數量遠超人類的星際戰機 = "Nhưng trước số lượng áp đảo của tiêm kích không gian địch,"
+撤退之路依舊艱難 = "Đường rút lui vô cùng gian nan."
+大批戰機接連被擊毀 = "Phần lớn chiến cơ đều bị bắn nổ,"
+僅有兩架戰機拼死突圍成功 = "Chỉ có hai chiếc là liều chết mở được đường máu thoát ra."
+身後卻依舊有兩架敵方戰機緊追不捨 = "Nhưng phía sau vẫn có hai chiếc tiêm kích địch bám đuổi gắt gao."
+同行了戰友為了引開追兵 = "Một phi công đồng đội để đánh lạc hướng quân truy đuổi,"
+獨自操控戰機極速拉升高度 = "Đã một mình lái máy bay vút lên độ cao tối đa,"
+最容易高空環境影響失去飛行平衡 = "Dưới áp lực của bầu khí quyển cao, máy bay mất thăng bằng,"
+很快就被敵方戰機擊中損毀 = "Và nhanh chóng bị tiêm kích địch bắn hạ."
+另一邊, = "Ở một diễn biến khác,"
+大批外星戰機精直衝向大型防空助手據點, = "Rất nhiều chiến cơ địch lao thẳng vào các cứ điểm phòng không mặt đất,"
+對據點展開密集猛烈的襲擊 = "Dội bom tàn phá dữ dội."
+紅大的對戰場面, = "Cảnh tượng giao tranh vô cùng hoành tráng,"
+宛如真實上演的星際機戰一般, = "Giống hệt như một trận chiến giữa các vì sao trong thực tế."
+面對擁有頂尖科技的天外飛行器 = "Trước những phi thuyền công nghệ đỉnh cao của đối phương,"
+藍布級出身撤離的前線人員傷亡慘重, = "Lực lượng mặt đất chưa kịp rút lui phải chịu thương vong vô cùng nặng nề,"
+整片空中作戰 = "Toàn bộ khu vực chiến đấu trên không"
+助地轉眼就被徹底移平 = "Và cứ điểm phòng không bị san phẳng trong tích tắc."
+另一邊, = "Lúc này,"
+史蒂夫巧是計測, = "Đại úy Steven Hiller đã dùng mưu kế,"
+把一架小型外星飛行器引至幽生峽谷之中, = "Dụ một chiếc tiêm kích ngoài hành tinh bay vào hẻm núi Grand Canyon,"
+敵方飛行器在身後死死緊追 = "Chiếc máy bay địch vẫn bám đuổi sát nút phía sau."
+通知峽谷地形走势, = "Nhờ thông thuộc địa hình hiểm trở của hẻm núi,"
+數次靈活閃躲, = "Anh thực hiện vài cú lượn ngoạn mục,"
+避開了對方攜來的攻勢 = "Né tránh thành công các loạt đạn từ kẻ thù."
+眼看戰機人員即將耗盡, = "Nhận thấy nhiên liệu sắp cạn kiệt,"
+史蒂夫立刻想出脫身執法, = "Steven lập tức nghĩ ra kế thoát thân,"
+果斷開啟戰機, = "Anh dứt khoát kích hoạt thiết bị bung dù"
+減速裝置 = "Hãm tốc của máy bay."
+飄落的減速散瞬間遮擋住後方推動的視線 = "Tấm dù hãm tốc bung ra bản lớn che khuất hoàn toàn tầm nhìn của kẻ địch,"
+緊接著他果斷彈射, = "Ngay lập tức, anh nhấn nút ghế phóng"
+跳散脫離坐艙 = "Để nhảy dù thoát khỏi buồng lái."
+施工的戰機直直撞向前方山崖, = "Chiếc chiến cơ mất lái lao thẳng vào vách đá,"
+後方緊追的外星飛行起來不及自動 = "Máy bay ngoài hành tinh bám theo phía sau không kịp phản ứng"
+也狠狠撞击地面损毁, = "Nên cũng đâm sầm xuống đất nổ tơi tả."
+使地夫平稳落地, = "Steven tiếp đất an toàn,"
+緩步走向损毁的外星飛行器, = "Anh chậm rãi đi tới mảnh vỡ của chiếc phi thuyền địch,"
+隨手掀開艙門 = "Dùng tay cạy nắp khoang lái."
+裡面一隻外星奇特的一星生靈證準備衝出, = "Bên trong, tên quái vật ngoài hành tinh định nhảy xổ ra tấn công,"
+被他抬手一拳直接打暈在地 = "Nhưng liền bị anh tặng cho một cú đấm knock-out bất tỉnh nhân sự."
+之後使地夫拖著陷入昏迷的一星生靈, = "Sau đó, Steven kéo lê gã người ngoài hành tinh đang hôn mê,"
+在茫茫荒漠裡艱難趕路 = "Một mình lầm lũi đi bộ vượt qua sa mạc mênh mông."
+屠住正巧遇上一對逃難車隊, = "May mắn thay, anh bắt gặp một đoàn xe tị nạn,"
+跟著眾人一同前行, = "Nên đã đi cùng họ"
+抵達了一處隱秘的地下研究據點 = "Đến Khu vực 51 - căn cứ nghiên cứu ngầm tuyệt mật."
+他亮出抓獲的一星生靈後, = "Sau khi cho lực lượng cảnh vệ xem món quà là sinh vật ngoài hành tinh,"
+直手人員立刻放行, = "Họ lập tức mở cổng cho đoàn xe đi vào."
+這裡正是一直流傳在外的神秘隱秘試驗區 = "Nơi đây chính là khu nghiên cứu bí ẩn luôn bị chính phủ giấu kín bấy lâu."
+此前一星勢力發起的首輪大範圍襲擊 = "Đợt tấn công hủy diệt diện rộng trước đó của kẻ địch"
+讓地球上眾多繁華、城市競速遭殃 = "Đã khiến vô vàn đô thị phồn hoa trên Trái Đất tan hoang,"
+維度這片隱秘、據點安穩無事 = "Duy chỉ có khu căn cứ ngầm này là vẫn an toàn vô sự."
+僥倖脫險了一眾核心人員也紛紛聚集到此 = "Những nhân sự cốt cán thoát chết từ Nhà Trắng cũng tập trung về đây."
+眾人望著據點內停放的天外飛行器 = "Mọi người nhìn chiếc phi thuyền đậu sẵn bên trong căn cứ"
+滿心震驚 = "Mà lòng đầy sửng sốt."
+原來很早之前 = "Hóa ra từ rất lâu về trước,"
+人類就已經知曉天外生靈真實存在 = "Chính phủ loài người đã biết sinh vật ngoài hành tinh thực sự tồn tại."
+多年前一場天外飛行器意外墜落世界 = "Nhiều thập kỷ trước, một vụ tai nạn rơi phi thuyền tại Roswell"
+就讓人類首次接觸到外星文明 = "Đã giúp con người lần đầu tiên tiếp xúc với công nghệ ngoài Trái Đất."
+相關一星生靈依還也一直被妥善留存 = "Xác sinh vật ngoài hành tinh và mảnh vỡ phi thuyền luôn được bảo quản nghiêm ngặt."
+數十年來 = "Suốt mấy chục năm qua,"
+相關科研團隊史中在案中 = "Đội ngũ khoa học tại đây vẫn âm thầm nghiên cứu"
+前夕研究外星飞行器与外星生命体 = "Về cấu trúc chiếc phi thuyền cũng như các mẫu sinh vật này."
+这类天外生灵身批特制生物防护开架 = "Loài sinh vật này vốn mặc một lớp giáp sinh học đặc biệt,"
+身体构造和人类有着不少相似之处 = "Cơ thể thực bên trong của chúng có cấu trúc khá giống con người."
+同样属于肉身屈体 = "Chúng cũng có xương thịt,"
+屈体本身并不算强悍脆弱异伤 = "Nhưng thể xác khá mỏng manh và dễ bị tổn thương."
+他们没有发生器官 = "Chúng không có cơ quan phát thanh,"
+彼此之间依靠类似精神意念的方式 = "Mà giao tiếp với nhau bằng năng lực thần giao cách cảm,"
+传递信息互相沟通 = "Truyền tải thông tin trực tiếp vào não bộ."
+话音刚落 = "Vừa dứt lời,"
+学者突然接到消息 = "Tiến sĩ Okun bất ngờ nhận được tin báo"
+由一名存活的天外生灵被送到了剧点内 = "Có một mẫu vật sống vừa được đưa vào căn cứ."
+他联盟快不出门迎接 = "Ông vội vàng ra cửa chào đón,"
+正是史蒂夫压缩过来的这名异性生灵 = "Đó chính là tên quái vật mà Steven vừa kéo về."
+很快就被送入专属隔离观测室, = "Nó nhanh chóng được đưa vào phòng cách ly đặc biệt,"
+准备开展细致的躯体研究 = "Để tiến hành cuộc phẫu thuật nghiên cứu chi tiết."
+学着手持精密气泄, = "Vị tiến sĩ cầm dụng cụ y tế,"
+小心玻璃异性生灵外层的防护铠甲 = "Cẩn thận rạch bỏ lớp giáp sinh học bên ngoài của nó."
+就在众人凝神官望之时突发小状况 = "Trong lúc mọi người đang nín thở theo dõi, một sự cố bất ngờ xảy ra."
+好在只是虚惊异场, = "May mắn thay, đó chỉ là một phen hú vía."
+随着外层铠甲逐步拆解 = "Khi lớp giáp ngoài được bóc tách ra hết,"
+天外生灵真正的样貌, = "Hình dạng thật sự của sinh vật ngoài hành tinh"
+终于完整展露在所有人眼前 = "Cuối cùng đã lộ diện hoàn toàn trước mắt mọi người."
+就在这时, = "Ngay vào lúc này,"
+那名异性生灵的手臂悄悄缓缓挪动 = "Cánh tay của sinh vật kia đột nhiên khẽ cử động,"
+在场众人丝毫没有察觉危机依然逼近 = "Tất cả những người có mặt vẫn chưa hề hay biết nguy hiểm đang cận kề."
+下一秒, = "Giây tiếp theo,"
+兩道人影印進他驟然睜開了眼眸裡 = "Nó đột ngột mở trừng mắt, phản chiếu bóng hình của các bác sĩ."
+科研學者只覺得腦中突然襲賴一股莫名的精神衝擊 = "Vị tiến sĩ chỉ cảm thấy đầu óc quay cuồng bởi một luồng xung kích tinh thần mạnh mẽ."
+異星聲靈環環站起身, = "Tên quái vật từ từ gượng dậy,"
+當場朝著實驗室裡的眾人發起突襲 = "Ngay lập tức mở cuộc tấn công bất ngờ vào mọi người trong phòng."
+等基地負責人匆匆趕來時, = "Đến khi Tổng thống và đội hộ tống vội vã chạy tới,"
+整間實驗室早已被濃密煙霧籠罩 = "Toàn bộ phòng thí nghiệm đã bị bao phủ bởi làn khói đặc."
+異星人僅是緩不靠近 = "Sinh vật ngoài hành tinh từ từ tiến lại gần tấm kính."
+有人想要救出被困的學者, = "Một người lính định lao vào cứu vị tiến sĩ đang bị kẹt,"
+卻被身旁同伴及時攔下 = "Nhưng đồng đội đã kịp thời giữ lại."
+帶到看清常常在學者勃梗處的詭異處虛 = "Khi nhìn rõ chiếc xúc tu ma quái đang quấn chặt lấy cổ vị tiến sĩ,"
+才明白學者早已被對方暗中操控, = "Họ mới hiểu ra ông ấy đã bị gã quái vật khống chế như một con rối."
+漫天濃煙慢慢消散, = "Làn khói dày đặc dần tan ra,"
+異星生靈發出古怪詭異的聲響, = "Gã người ngoài hành tinh phát ra những âm thanh kỳ quái rợn người,"
+無形的精神聲波瞬間擴散開來, = "Một làn sóng xung kích tinh thần vô hình lập tức lan tỏa."
+在場眾人瞬間頭痛男人倒地全縮, = "Khiến những người có mặt đau đầu dữ dội, ngã quỵ xuống đất ôm đầu."
+現場帶隊之人立刻下達指令, = "Chỉ huy đội bảo vệ liền hét lớn ra lệnh,"
+眾人紛紛對著隔離倉內的異星生靈權力發起攻擊, = "Các binh lính đồng loạt xả súng điên cuồng vào sinh vật trong phòng cách ly."
+一陣劇烈的精神刺痛過後, = "Thông qua bộ não của vị tiến sĩ trong cơn đau đớn đó,"
+眾人腦海中都接受到了外星族群奔赴地球的真正圖謀, = "Tổng thống đã thấu thị được dã tâm tàn bạo của lũ quái vật: chúng muốn tận diệt loài người."
+現場人員聯盟拿出武器, = "Các đặc vụ lập tức rút súng,"
+對著失去反抗之力的異星生靈補給, = "Bắn bồi thêm nhiều phát vào sinh vật đã mất khả năng kháng cự,"
+徹底消除了這份隱患。 = "Tiêu diệt hoàn toàn mối hiểm họa này."
+为了彻底击退外来入侵者, = "Để đánh bại hoàn toàn thế lực xâm lược này,"
+助人商议过后, = "Sau khi bàn bạc kỹ lưỡng,"
+决定动用中级强力武器展开反击 = "Quyết định sử dụng vũ khí hạt nhân để phản công."
+很怪, = "Rất nhanh sau đó,"
+搭在重型作战武器的飞行战机奔赴战场上空 = "Chiếc máy bay ném bom mang theo vũ khí hạng nặng tiến vào vùng trời chiến sự."
+接到指令后, = "Nhận được lệnh khai hỏa,"
+重爆武器禁止朝着剧情外星主建社区 = "Đầu đạn tầm nhiệt nhắm thẳng vào phi thuyền khổng lồ ngoài hành tinh phóng đi."
+到计时结束后精准命路目标 = "Sau khi đếm ngược kết thúc, tên lửa đánh trúng mục tiêu một cách chính xác."
+就在所有人以为战局营来转机, = "Ngay khi mọi người cứ ngỡ cục diện trận chiến đã xoay chuyển,"
+满心振恶之时 = "Và đang vô cùng phấn khích"
+一則令人徹底心寒的消息傳來 = "Thì một tin tức dội gáo nước lạnh truyền đến:"
+劇情外星逐漸已久完好無損 = "Tàu mẹ khổng lồ ngoài hành tinh vẫn vẹn toàn vô sự,"
+絲毫沒有受到半點損傷 = "Không chịu bất kỳ tổn hại nào từ vụ nổ hạt nhân."
+面對不僅逼 = "Đối mặt với kẻ thù"
+妄睹侵賴整片大敵的外來勢力 = "Đang từng bước muốn nuốt chửng toàn bộ Trái Đất,"
+難道人類文明真的要就此走向落幕 = "Liệu nền văn minh nhân loại có thực sự phải đi đến hồi kết?"
+絕望的情緒瞬間弄著所有人 = "Sự tuyệt vọng bủa vây lấy tâm trí của tất cả mọi người."
+大衛也整日借酒消愁 = "David cũng mượn rượu giải sầu suốt ngày,"
+滿心懊惱自己空用學識 = "Anh vô cùng bất mãn khi bản thân học rộng tài cao"
+無力扭轉眼下的絕境 = "Nhưng lại bất lực trước cảnh ngộ bế tắc hiện tại."
+好在家人耐心開導勸位 = "May mắn là nhờ có người cha kiên trì khuyên bảo và khai sáng,"
+讓讓重新振作起來 = "Đã giúp anh vực dậy tinh thần."
+腦海中猛然浮現出 = "Một ý tưởng lóe lên trong đầu,"
+克制外星戰艦的破解執法 = "Anh đã tìm ra cách phá giải lá chắn năng lượng của chiến hạm địch."
+他立刻叫請休息中的科研人員 = "Anh gọi ngay các nhà khoa học đang nghỉ ngơi dậy,"
+趙吉基地內所有人員一同商議對策, = "Tập hợp tất cả mọi người trong căn cứ để thảo luận đối sách,"
+還特意拿出灌體道具 = "Anh còn lấy ra một mô hình thực nghiệm"
+模擬對外星飛行器發起攻擊做實地測試 = "Để mô phỏng cuộc tấn công thực địa thử nghiệm trên phi thuyền địch."
+初次試驗時, = "Trong lần thử nghiệm đầu tiên,"
+子彈撞擊在能量防護層上直接被彈開 = "Viên đạn bắn vào lớp phòng thủ năng lượng lập tức bị bật văng ra,"
+場面驚險不已 = "Cảnh tượng vô cùng hú vía."
+隨後大衛將特質干擾程序植入模擬信號中 = "Sau đó, David cài đặt một virus máy tính đặc biệt vào tín hiệu mô phỏng"
+再次進行射擊測試, = "Rồi tiến hành bắn thử lại lần nữa,"
+這一次攻擊順利命入目標 = "Lần này đòn tấn công đã bắn trúng mục tiêu một cách dễ dàng."
+原本堅不可摧的防護屏障徹底失效 = "Lớp bảo vệ vốn kiên cố bất khả xâm phạm nay đã hoàn toàn bị vô hiệu hóa."
+原來大衛想出的辦法, = "Hóa ra, phương pháp mà David nghĩ ra"
+開就是用特質信號病毒干擾對方系統 = "Chính là dùng một loại virus mã hóa để làm nhiễu loạn hệ thống của đối phương,"
+如同讓飛行器陷入程序紊亂一般 = "Khiến hệ thống điều khiển của phi thuyền rơi vào trạng thái tê liệt."
+在借助太空信號網絡 = "Sau đó mượn mạng lưới tín hiệu không gian liên lạc của chúng,"
+把病毒擴散到所有外星母艦之中 = "Để phát tán virus này đến tất cả các tàu mẹ ngoài hành tinh,"
+瓦解它們賴以自保的能量護盾 = "Đánh sập lớp khiên năng lượng tự vệ của chúng."
+這也是人類唯一能正面發起反擊的突破口 = "Đây chính là bước đột phá và là cơ hội duy nhất để loài người phản công trực diện."
+只是想要完成這項計畫 = "Tuy nhiên, để hoàn thành kế hoạch này,"
+必須挑選兩名勇士駕駛小型飛行器奔赴浩漢太空 = "Cần phải tuyển chọn hai dũng sĩ lái chiếc phi thuyền nhỏ thu được vào không gian sâu thẳm,"
+悄悄潛入外星主艦內部植入干擾程序 = "Âm thầm thâm nhập vào bên trong tàu mẹ của địch để cấy virus."
+即便是計畫順利成功 = "Ngay cả khi kế hoạch thành công tốt đẹp,"
+也只能短暫破除防護 = "Thì lớp phòng thủ cũng chỉ bị phá vỡ"
+爭取短短片刻的作戰時機 = "Và mang lại một khoảng thời gian tác chiến vô cùng ngắn ngủi."
+這已是眼下僅存的求生希望 = "Nhưng đây đã là tia hy vọng sống sót cuối cùng của Trái Đất."
+為了守護家園 = "Để bảo vệ quê hương,"
+大衛與史密私主動挺身而出接下來這項兇險任務 = "David cùng Đại úy Steven đã chủ động đứng ra nhận nhiệm vụ cực kỳ nguy hiểm này,"
+自行前路秒忙, = "Dẫn thân vào hành trình lành ít dữ nhiều,"
+升環機率維護其位 = "Xác suất sống sót trở về là vô cùng thấp."
+與此同時, = "Cùng lúc đó,"
+以密據點接觸專屬加密電波 = "Căn cứ bí mật sử dụng tần số vô tuyến mã hóa đặc biệt"
+向全球各處傳遞聯合反擊的訊息 = "Để truyền thông điệp tổng lực phản công tới các lực lượng còn lại trên toàn cầu."
+二人順利抵達太空領域 = "Hai người thuận lợi lái phi thuyền tiến vào không gian."
+一艘體量左右1.4月球大小的巨型外星母艦赫然出現在視野之中 = "Một trạm không gian đầu não có kích thước bằng 1/4 Mặt Trăng hiện ra sừng sững trước mắt."
+可就在飛行機逐步靠近時, = "Nhưng khi chiếc phi thuyền nhỏ tiến lại gần,"
+機身突然不受操控 = "Hệ thống lái đột ngột bị mất kiểm soát,"
+自動切換成自主航行模式 = "Tự động chuyển sang chế độ tự hành kết nối với tàu mẹ."
+這樣的突發狀況其實早已在大衛的預料之內 = "Tình huống bất ngờ này thực chất đã nằm trong dự tính của David."
+在万星母舰 of 引力迁引下 = "Dưới lực hút dẫn đường của tàu mẹ,"
+兩人乘坐的飛行器緩緩使肉艦體內部 = "Chiếc phi thuyền của hai người từ từ tiến vào sâu bên trong khoang tàu."
+眼前灰红奇特的內部構造 = "Kiến trúc khổng lồ và kỳ dị bên trong"
+難以想像的竟是一艘星機航行戰艦 = "Khiến người ta khó lòng tưởng tượng nổi đây lại là một siêu chiến hạm vũ trụ."
+飛行機從一種外星生靈頭頂緩緩練過 = "Phi thuyền lướt nhẹ qua ngay trên đầu của hàng loạt sinh vật ngoài hành tinh."
+下方寬闊的巨型平台上 = "Dưới nền sân ga rộng lớn,"
+數值不盡的外星作戰隊伍排列的整整機器 = "Vô số quân đoàn viễn chinh ngoài hành tinh đã tập hợp chỉnh tề,"
+仍然是在集結待命 = "Chúng đang đứng chờ lệnh"
+準備發起最後的全面清晰 = "Để phát động cuộc tổng tấn công hủy diệt cuối cùng."
+沒多久 = "Không lâu sau,"
+小型飛行器便被母艦內部的固定支架牢牢鎖住 = "Chiếc phi thuyền nhỏ bị hệ thống càng kẹp của tàu mẹ khóa chặt cố định."
+抓緊時間上傳特製干擾程序 = "Họ tranh thủ từng giây để tải lên chương trình virus đặc chế."
+統一時間, = "Cùng thời điểm đó,"
+地球這邊也收到行動就緒的信號 = "Phía Trái Đất cũng nhận được tín hiệu báo sẵn sàng hành động."
+所有空中作戰、飛行機全部正中待命 = "Toàn bộ phi đội máy bay tiêm kích đều vào vị trí chờ lệnh,"
+終極對決一觸及發 = "Trận chiến sinh tử cuối cùng chuẩn bị bùng nổ."
+很快干擾程序順利植入完成 = "Rất nhanh, virus máy tính đã được cấy thành công,"
+混亂信號迅速擴散 = "Tín hiệu hỗn loạn nhanh chóng lan rộng,"
+連艦內員們安穩修整的外星族群都受到了明顯影響 = "Khiến toàn bộ hệ thống của lũ quái vật trong tàu mẹ bị tác động rõ rệt."
+前線指揮人員當機下達進攻指令 = "Chỉ huy mặt đất lập tức phát lệnh tấn công,"
+大批戰基利克朝著巨星外星主艦發起攻勢 = "Hàng loạt chiến cơ lao thẳng về phía các phi thuyền khổng lồ của địch."
+可對方依舊迅速撐起防護屏障 = "Nhưng đối phương vẫn kịp thời bật lá chắn bảo vệ,"
+起來的攻擊技術被阻攔在外 = "Loạt tên lửa bắn ra đều bị chặn đứng bên ngoài."
+眾人見撞都以為計劃落空, = "Mọi người thấy vậy cứ ngỡ kế hoạch đã đổ bể,"
+戰機編隊只能暫時向後撤離 = "Biển đội máy bay đành phải tạm thời bay dạt ra sau."
+可所有人都不願就此放棄, = "Nhưng các phi công không cam chịu bỏ cuộc,"
+再度發起進攻嘗試 = "Họ tiếp tục thử nổ súng công kích lần nữa."
+這一次攻擊成功突破阻礙機動艦體 = "Lần này, loạt đạn đã xuyên qua được lớp lá chắn và bắn trúng vỏ tàu."
+地面上的人們瞬間歡呼雀躍, = "Mọi người ở mặt đất lập tức hò reo ăn mừng phấn khích,"
+戰機隊伍迅速重等陣行 = "Đội hình chiến cơ nhanh chóng xếp lại trận thế,"
+集中所有火力對外星戰艦展開輪返本宮 = "Tập trung toàn bộ hỏa lực luân phiên oanh tạc vào chiến hạm địch."
+針對戰艦體型太過龐大 = "Tuy nhiên do kích thước con tàu quá khổng lồ,"
+普通攻勢依舊難以造成毀滅性重瘡 = "Những đòn tấn công thông thường vẫn chưa thể gây ra thiệt hại mang tính hủy diệt."
+請客間秘密麻麻的歪行小型戰機星潮而出展開反撲 = "Trong nháy mắt, đàn tiêm kích nhỏ dày đặc của địch ùa ra như ong vỡ tổ để phản công."
+如今對方防護平蕩時效, = "Giờ đây khi lớp khiên bảo vệ của đối phương đã mất hiệu lực,"
+雙方實力趨於對等 = "Cán cân thực lực giữa hai bên đã trở nên ngang ngửa."
+前線作戰人員全 đều 拼盡全力奮勇迎戰 = "Các phi công tiền tuyến đều dốc toàn lực chiến đấu kiên cường."
+戰火橫跨蔓延至地面易秘據點 = "Khói lửa chiến tranh nhanh chóng lan rộng xuống khu vực căn cứ mật dưới mặt đất,"
+據點遭到大批外星飛行器突襲 = "Nơi này bị một toán máy bay địch bất ngờ tập kích,"
+助手人員傷亡慘重 = "Lực lượng đồn trú chịu thương vong không nhỏ."
+眾人荒芒躲進地下避險攻勢之內 = "Mọi người hoảng loạn kéo nhau trốn vào boong-ke ngầm để lánh nạn."
+危機關頭 = "Giữa thời khắc nguy kịch,"
+劇情外星主鍵再度啟動殺傷力極強的高能光束武器 = "Khẩu đại pháo laser hủy diệt dưới bụng tàu địch bắt đầu tích tụ năng lượng chuẩn bị khai hỏa."
+眾人萬分交集 = "Ai nấy đều vô cùng lo sốt vó."
+聯盟發射彈藥想要提前摧毀發射裝置 = "Biển đội máy bay cố bắn tên lửa nhằm phá hủy sớm họng súng phát xạ,"
+卻被艦艇底部艙門紋紋擋住 = "Nhưng trớ trêu thay tầm bắn lại bị cửa khoang che chắn mất."
+就在光束即將蓄能發射的生死瞬間 = "Ngay vào khoảnh khắc sinh tử khi tia laser hủy diệt chuẩn bị phóng ra,"
+因為曾親力過外星危機的勞者依然卸下防護裝備 = "Ông lão phi công Russell Casse, người từng bị quái vật bắt cóc năm xưa, đã tháo bỏ mặt nạ dưỡng khí,"
+禁止衝向巨型戰艦底部 = "Lái chiếc máy bay lao thẳng về phía bụng chiến hạm khổng lồ,"
+分立撞向光束發射口 = "Liều mình đâm sầm vào họng súng laser đang mở rộng."
+劇烈衝擊瞬間引發連鎖爆炸 = "Cú va chạm cực mạnh kích nổ kho vũ khí, gây ra chuỗi nổ liên hoàn."
+龐大的外星戰艦人起衝天烈火 = "Con tàu ngoài hành tinh khổng lồ bốc cháy ngùn ngụt,"
+禁止朝著地面墜落 = "Rồi đâm sầm xuống đất nổ tung thành tro bụi."
+勞著不僅了結了過網恩怨 = "Ông lão không chỉ giải quyết được mối thù hận cá nhân trong quá khứ,"
+更挺身而出守護了世間眾人 = "Mà còn dùng cả tính mạng để bảo vệ nhân loại."
+成為了萬眾敬仰的英雄 = "Trở thành vị anh hùng vĩ đại được muôn người kính trọng."
+而身處太空母艦內部的大衛羽同伴 = "Trong khi đó, David và đồng đội đang ở trong không gian,"
+完成任務後卻發現大城的飛行器徹底失靈 = "Sau khi hoàn thành nhiệm vụ thì phát hiện phi thuyền của mình đã bị liệt hoàn toàn hệ thống khởi động,"
+兩人瞬間陷入絕境 = "Cả hai rơi vào tình cảnh ngàn cân treo sợi tóc."
+二人朝著敵方指揮區域試意過後 = "Sau cái nhìn từ biệt hướng về phía phòng điều hành của kẻ địch,"
+果斷朝著母艦核心區域投放了重型殺傷武器 = "Họ dứt khoát phóng một đầu đạn hạt nhân hạng nặng vào thẳng lõi năng lượng của tàu mẹ."
+千軍一發之際 = "Ngay trong khoảnh khắc định mệnh đó,"
+所住飛行器的固定裝置意外鬆動 = "Khóa chốt giữ chiếc phi thuyền đột nhiên bị rung lắc chấn động làm lỏng ra,"
+同伴立刻啟動設備全速撤離 = "Steven lập tức nhấn ga, điều khiển phi thuyền tháo chạy hết tốc lực."
+身後數架敵方飛行棄警隨其後窮追不捨 = "Phía sau, vài chiếc tiêm kích địch vẫn điên cuồng đuổi theo không buông."
+最終二人趕在艙門閉合的最後一順 = "Cuối cùng, hai người đã kịp lao ra ngoài"
+成功衝出危險區域順利拖身 = "Ngay vào giây cuối cùng trước khi cửa khoang đóng sập lại, thoát hiểm ngoạn mục."
+留在母艦之內的外星 = "Lũ quái vật ngoài hành tinh"
+足群無力阻攔 = "Bị bỏ lại bên trong tàu mẹ hoàn toàn bất lực,"
+只能眼睜睜看著到計時結束 = "Chúng chỉ biết tuyệt vọng nhìn đồng hồ đếm ngược kết thúc."
+弱大的太空母艦轟然炸裂 = "Trạm không gian khổng lồ nổ tung kinh hoàng,"
+花索漫天碎片消散在宇宙之中 = "Biến thành hàng triệu mảnh vụn tiêu tán vào không gian vũ trụ bao la."
+人類終於成功擊退外敵 = "Nhân loại cuối cùng đã đánh đuổi được thế lực xâm lược,"
+贏得了這場星際之戰的勝利 = "Giành chiến thắng oanh liệt trong cuộc chiến bảo vệ Trái Đất."
+只是所有人都未曾察觉, = "Tuy nhiên, không một ai hay biết rằng,"
+就在巨型母舰崩塌前, = "Ngay trước khi trạm không gian khổng lồ sụp đổ,"
+一到来自一星升临的紧急球员讯号, = "Một tín hiệu cầu cứu khẩn cấp từ bọn chúng"
+早已巧然向着遥远星际船递了出去。 = "Đã kịp thời được gửi đi hướng về phía dải ngân hà xa xôi."
+值得一提的是, = "Một thông tin bên lề thú vị là,"
+本片开机到沙清仅仅只用了72天, = "Bộ phim này từ lúc bấm máy cho đến khi đóng máy chỉ mất vỏn vẹn 72 ngày."
+制作期间打造3978架支持战机, = "Trong quá trình sản xuất, họ đã chế tạo 3.978 mô hình chiến cơ của Trái Đất,"
+3931架一星战机, = "3.931 mô hình tiêm kích ngoài hành tinh,"
+52278组建筑场景碎片, = "52.278 mảnh vỡ bối cảnh công trình kiến trúc,"
+还制作了9米长巨型星际母舰, = "Cùng một mô hình tàu mẹ không gian dài tới 9 mét,"
+以即一米十二復刻, = "Và một mô hình phục chế tỉ lệ 1:12,"
+六米長的核心地標鍵柱經系模型, = "Đó là mô hình chi tiết của các tòa nhà biểu tượng cốt lõi dài 6 mét."
+平跌龐大威梭道具規模, = "Nhờ quy mô đạo cụ mô hình khổng lồ và hoành tráng này,"
+斬獲了吉尼斯世界紀錄的認證, = "Bộ phim đã được tổ chức Kỷ lục Thế giới Guinness công nhận,"
+成為同期使用威梭模型數量最多的影片。 = "Trở thành tác phẩm điện ảnh sử dụng số lượng mô hình thu nhỏ nhiều nhất trong lịch sử thời bấy giờ."
+• 进尘三房包裹法有哪些？ = "Có 3 cách quấn khăn cho bé mà mẹ nào cũng nên biết."
+
+• 第一种 防着凉包裹法。 = "Cách thứ nhất: Quấn chống lạnh."
+
+• 这种包裹法适合外出打疫苗。 = "Phù hợp khi đưa bé ra ngoài hoặc đi tiêm phòng."
+
+• 既能遮光挡风又能防着凉。 = "Vừa che nắng, cản gió, vừa giúp bé tránh bị nhiễm lạnh."
+
+• 适合各种外出环境。 = "Thích hợp trong hầu hết các trường hợp khi ra ngoài."
+
+• 第二种 防惊跳包裹法。 = "Cách thứ hai: Quấn chống giật mình."
+
+• 小月龄宝宝往往有惊跳反射。 = "Trẻ sơ sinh thường có phản xạ giật mình."
+
+• 睡觉时一惊一乍，睡不踏实。 = "Khi ngủ bé dễ giật mình, ngủ không sâu giấc."
+
+• 这种包裹法模拟宝宝在妈妈肚子里的环境。 = "Cách quấn này mô phỏng cảm giác bé còn ở trong bụng mẹ."
+
+• 增加安全感，让宝宝睡得香不闹觉。 = "Giúp bé cảm thấy an toàn hơn, ngủ ngon và ít quấy khóc."
+
+• 第三种 防吐奶包裹法。 = "Cách thứ ba: Quấn chống trớ sữa."
+
+• 把包被折成一个圆枕。 = "Gấp khăn quấn thành một chiếc gối tròn."
+
+• 宝宝侧躺时把小脚搭在圆枕上。 = "Khi cho bé nằm nghiêng, đặt chân bé lên chiếc gối tròn."
+
+• 背部靠着小圆枕。 = "Phần lưng tựa vào gối."
+
+• 双手也包裹固定好。 = "Hai tay cũng được quấn cố định gọn gàng."
+
+• 这种包裹法能有效防止宝宝吐奶。 = "Cách quấn này giúp hạn chế tình trạng bé bị trớ sữa rất hiệu quả."
+• 错误姿势起不来。 = "Sai tư thế nên bé rất khó ngẩng đầu."
+
+• 额不前伸。 = "Đầu không vươn về phía trước."
+
+• 不发力。 = "Bé không thể dùng lực."
+
+• 正确姿势共五步。 = "Tư thế đúng gồm 5 bước."
+
+• 小腿一搭。 = "Đặt một chân của bé lên trước."
+
+• 小手一举。 = "Nâng một cánh tay của bé lên."
+
+• 屁屁一按。 = "Dùng tay đỡ nhẹ phần hông của bé."
+
+• 整理两只小手。 = "Điều chỉnh hai tay của bé đúng vị trí."
+
+• 护住后背。 = "Đỡ và bảo vệ phần lưng của bé."
+
+• 缓解一下宝宝的背部肌张力。 = "Giúp giảm tình trạng căng cơ vùng lưng của bé."
+
+• 让宝宝的头抬得更高、抬得更好。 = "Giúp bé ngẩng đầu cao hơn và vững hơn."
+
+• 锻炼宝宝的手部力量、颈部力量和背部力量。 = "Rèn luyện sức mạnh cho tay, cổ và lưng của bé."
+
+• 为宝宝的抬头翻身做准备。 = "Chuẩn bị nền tảng để bé ngẩng đầu và tập lật an toàn."
+• 你看这个手啊。 = "Nhìn cánh tay của bé này."
+
+• 它就开始扭了。 = "Bé bắt đầu cựa quậy."
+
+• 马上就把自己扭醒了。 = "Chỉ một lúc là tự làm mình tỉnh giấc."
+
+• 那怎么办呢？ = "Vậy phải làm thế nào?"
+
+• 来。 = "Nào."
+
+• 抓住。 = "Giữ nhẹ tay bé."
+
+• 给它包过来。 = "Quấn khăn ôm gọn cánh tay lại."
+
+• 一个手在下面。 = "Đặt một tay của bé ở phía dưới."
+
+• 一个手在上面。 = "Tay còn lại đặt ở phía trên."
+
+• 包过来。 = "Tiếp tục quấn khăn cố định lại."
+
+• 把它的两个小脚给它抓住。 = "Nhẹ nhàng giữ hai bàn chân của bé."
+
+• 拍它。 = "Vỗ về bé nhẹ nhàng."
+
+• 一二三四五六七八九十。 = "Đếm từ một đến mười."
+
+• 放松。 = "Thả lỏng cơ thể bé."
+
+• 睡着了吧。 = "Thế là bé lại ngủ ngon rồi."
+为什么坏掉的充电器里面全都是宝，却没人告诉我。 = "Tại sao bên trong những cục sạc hỏng lại toàn là đồ có giá trị mà chẳng ai nói cho tôi biết?"
+如果你也有这种废旧的充电器。 = "Nếu bạn cũng có những cục sạc cũ đã hỏng,"
+千万别当破烂卖。 = "Thì đừng vội bán cho người thu mua ve chai."
+收废品的几毛钱收走。 = "Vì họ chỉ mua với giá rẻ mạt."
+在里面随便拆一个零件。 = "Chỉ cần tháo ra một linh kiện bên trong,"
+转手就能翻起十倍。 = "Là giá trị có thể tăng lên gấp nhiều lần."
+我们瞅瞅这两根线。 = "Hãy nhìn hai sợi dây này."
+里面是正宗的纯紫铜。 = "Bên trong là đồng đỏ nguyên chất."
+这可是硬通货。 = "Đây là vật liệu rất có giá trị."
+家里很多地方都能用得到。 = "Có thể tận dụng cho rất nhiều việc trong gia đình."
+再看这个小风扇。 = "Tiếp theo là chiếc quạt nhỏ này."
+12伏的给家里小孩儿。 = "Chỉ cần cấp nguồn 12 vôn là có thể sử dụng."
+改个迷你小风扇。 = "Chế thành một chiếc quạt mini."
+省电又耐用。 = "Vừa tiết kiệm điện, vừa bền."
+看一下主板上的变压器。 = "Còn đây là biến áp trên bo mạch."
+里头全都是紫铜丝的。 = "Bên trong quấn toàn bằng dây đồng đỏ."
+稍微改一下就是个小型电焊机。 = "Chỉ cần cải tạo một chút là có thể làm thành máy hàn mini."
+比买的还好用。 = "Thậm chí còn dùng hiệu quả hơn nhiều loại bán sẵn."
+还有这个大电容放电电流特别猛。 = "Tụ điện lớn này có khả năng phóng điện rất mạnh."
+专门修复那些饿死的坏电瓶特别方便。 = "Rất hữu ích khi phục hồi những bình ắc quy bị cạn kiệt."
+这几个二极管更是好东西。 = "Mấy con điốt này cũng rất đáng giá."
+不仅能整流。 = "Không chỉ dùng để chỉnh lưu dòng điện."
+还可以接在充电口上。 = "Mà còn có thể lắp vào cổng sạc."
+就可以防止小孩子不小心碰到触电。 = "Giúp hạn chế nguy cơ trẻ nhỏ vô tình bị điện giật."
+这两个发光二极管。 = "Còn hai đèn LED này."
+那是维修师傅的最爱。 = "Là linh kiện rất được thợ sửa chữa ưa dùng."
+测电动车控制器。 = "Có thể dùng để kiểm tra bộ điều khiển xe điện."
+查全车线路。 = "Hoặc kiểm tra hệ thống dây điện trên xe."
+一测一个准。 = "Kiểm tra rất nhanh và chính xác."
+还有这个黄色的方形小电容。 = "Còn tụ điện màu vàng hình vuông này."
+如果家里晚上关了灯还发暗光。 = "Nếu đèn trong nhà đã tắt mà vẫn còn sáng mờ,"
+接上去立马就能搞定。 = "Chỉ cần lắp thêm linh kiện này là xử lý được ngay."
+最后看这个三级管。 = "Cuối cùng là con tranzito này."
+用它做的迷你型拆焊台。 = "Có thể tận dụng để chế thành một bộ tháo hàn mini."
+自己修灯。 = "Tự sửa chữa đèn."
+换灯珠方便的很。 = "Thay bóng LED rất nhanh và thuận tiện."
+瞧见了吧。 = "Thấy chưa?"
+这里面全都是好东西。 = "Bên trong toàn là những linh kiện có giá trị."
+想跟着做的。 = "Nếu muốn tự làm theo,"
+我来一步一步的教你该怎么做。 = "Tôi sẽ hướng dẫn từng bước thật chi tiết."
+把她这样拳起来。 = "Ôm gọn bé như thế này."
+
+• 哎呀。 = "Đấy nhé!"
+
+• 听到没。 = "Nghe thấy chưa?"
+
+• 你说宝宝不好戴。 = "Nếu bé khó xì hơi,"
+
+• 那是因为你不知道这四种排气法。 = "Là vì bạn chưa biết 4 cách giúp bé xì hơi hiệu quả."
+
+• 第一种。 = "Cách thứ nhất."
+
+• 我们让宝宝趴过来。 = "Cho bé nằm sấp."
+
+• 腿托把它拳起来。 = "Đỡ hai chân rồi ôm gọn bé lại."
+
+• 这个就叫飞机拳抱。 = "Đây gọi là tư thế bế máy bay."
+
+• 这种姿势她的腿托。 = "Ở tư thế này, hai chân bé được nâng đỡ."
+
+• 肚子有个脊啊。 = "Phần bụng sẽ được tạo một áp lực nhẹ."
+
+• 就会帮助排气。 = "Nhờ đó bé sẽ dễ xì hơi hơn."
+
+• 第二种。 = "Cách thứ hai."
+
+• 我们把宝宝以飞机抱的姿势放在妈妈的腿上面。 = "Đặt bé ở tư thế bế máy bay trên đùi của mẹ."
+
+• 其跨在你的小腿上。 = "Cho bé nằm vắt ngang trên cẳng chân."
+
+• 要把这个手把它捏起来。 = "Một tay giữ chắc cơ thể của bé."
+
+• 重点是我们要把她腿托起。 = "Điều quan trọng là phải nâng phần chân của bé lên."
+
+• 跨在你的小腿上。 = "Để bé tựa trên cẳng chân."
+
+• 这样子可以增加她肚子的脊啊。 = "Tư thế này sẽ tạo thêm áp lực lên vùng bụng."
+
+• 然后就可以帮助排气了。 = "Giúp bé xì hơi dễ dàng hơn."
+
+• 第三种 妈妈把腿全起来。 = "Cách thứ ba: Mẹ co hai chân lại."
+
+• 把宝宝放在两腿中间。 = "Đặt bé vào giữa hai chân."
+
+• 和妈妈面对面。 = "Để bé quay mặt về phía mẹ."
+
+• 然后把腿头灯在妈妈的肚子上面。 = "Cho hai chân bé tì nhẹ vào bụng mẹ."
+
+• 这样子可以增加敷衙。 = "Cách này giúp tăng áp lực lên vùng bụng."
+
+• 就像我们灯坑的感觉。 = "Nhờ đó bé sẽ dễ xì hơi hơn."
+
+• 跟这个动作一定要做到爸爸做。 = "Bố cũng có thể thực hiện động tác này."
+
+• 第四个。 = "Cách thứ tư."
+
+• 我们把宝宝包起来。 = "Quấn khăn cho bé."
+
+• 两只小脚含起来。 = "Co nhẹ hai chân của bé."
+
+• 抵住肚子。 = "Để đầu gối áp sát vào bụng."
+
+• 这样就可以增加敷衙。 = "Cách này sẽ tạo thêm áp lực lên vùng bụng."
+
+• 帮助排气了。 = "Giúp bé xì hơi nhanh và dễ dàng hơn."
+• 大修发动机拆出来的活塞不要扔。 = "Pít-tông tháo ra khi đại tu động cơ đừng vội vứt đi."
+
+• 可以焊接上钢板改造成木板打磨工具。 = "Chỉ cần hàn thêm một tấm thép là có thể chế thành dụng cụ chà nhám gỗ."
+
+• 先把废旧活塞焊接上钢板固定配件。 = "Trước tiên, hàn cố định pít-tông cũ lên tấm thép."
+
+• 接着再把磨砂纸打上胶水贴在活塞上压紧。 = "Tiếp theo, bôi keo lên giấy nhám, dán lên bề mặt pít-tông rồi ép chặt."
+
+• 然后再把弹簧安装到活塞两边的钢板上用螺丝固定。 = "Sau đó, lắp lò xo vào hai tấm thép ở hai bên pít-tông và cố định bằng bu lông."
+
+• 再接着把钢板装上去压住弹簧拧紧螺丝。 = "Tiếp tục lắp tấm thép phía trên để ép lò xo, rồi siết chặt các bu lông."
+
+• 再然后把滚动轴承装到打磨机上。 = "Tiếp theo, lắp ổ bi vào máy chà nhám."
+
+• 接着将打磨机装到活塞上拧紧固定制作成抛磨机。 = "Sau đó gắn máy chà nhám vào cụm pít-tông và siết chặt để hoàn thiện dụng cụ."
+
+• 这样就可以启动打磨机带动活塞来回活动。 = "Khi khởi động, máy sẽ truyền động giúp pít-tông chuyển động tịnh tiến qua lại."
+
+• 把木板表面打磨光滑去掉毛刺。 = "Nhờ vậy có thể chà nhẵn bề mặt gỗ và loại bỏ hoàn toàn các dăm gỗ."
+
+• 你们觉得这个发明实用吗？ = "Các bạn thấy sáng kiến này có thực sự hữu ích không?"
+• 你还见过这种老物件吗？ = "Bạn đã từng thấy món đồ cũ này chưa?"
+
+• 可惜现在的很多年轻人都不知道。 = "Đáng tiếc là bây giờ nhiều bạn trẻ không còn biết đến nó."
+
+• 把线往上一缠。 = "Quấn dây đồng quanh lõi."
+
+• 加两块小磁铁。 = "Sau đó gắn thêm hai viên nam châm nhỏ."
+
+• 立马变成高科技。 = "Lập tức biến thành một thiết bị phát điện mini."
+
+• 不用电池盒。 = "Không cần dùng hộp đựng pin."
+
+• 磁铁往里电池上一吸。 = "Chỉ cần gắn nam châm vào hai đầu viên pin."
+
+• 绝了。 = "Quá hay luôn."
+
+• 根本不用管正负极。 = "Thậm chí không cần quan tâm đến cực âm hay cực dương."
+
+• 只要灯一闪就开始充电。 = "Chỉ cần đèn báo sáng là thiết bị đã bắt đầu sạc."
+
+• 是不是比现在的充电器还香？ = "Các bạn thấy cách này có tiện hơn cả bộ sạc thông thường không?"
+• 颠一颠。 = "Nhẹ nhàng nhún bé lên xuống."
+
+• 听到没？ = "Nghe rõ chưa?"
+
+• 你不想做排气操，我给你讲一个简单排气法。 = "Nếu bạn không muốn tập bài tập xì hơi cho bé thì mình sẽ chỉ một cách đơn giản hơn."
+
+• 拿个枕头过来。 = "Lấy một chiếc gối."
+
+• 垫在腿下面。 = "Đặt gối kê dưới chân."
+
+• 我们把宝宝以飞机抱的姿势。 = "Bế bé theo tư thế máy bay."
+
+• 趴在你的腿上。 = "Đặt bé nằm sấp trên đùi."
+
+• 我们把宝宝的手捏到一起。 = "Khép hai tay của bé lại."
+
+• 这样它就不会散开了。 = "Như vậy tay bé sẽ không bị dang ra."
+
+• 把宝宝的腿这样往上面一推。 = "Nhẹ nhàng nâng hai chân bé lên."
+
+• 它的肚子是不是就骑跨在你的腿上面。 = "Lúc này bụng bé sẽ tì lên đùi của bạn."
+
+• 这样就感觉到宝宝肚子和你的小腿之间。 = "Nhờ vậy bụng bé sẽ được tì nhẹ vào cẳng chân của bạn."
+
+• 就一个小小的挤压，就可以帮助排气了。 = "Chỉ cần một lực ép nhẹ là đã giúp bé xì hơi dễ hơn."
+
+• 这种姿势的话，比我们飞机抱排气更轻松。 = "Tư thế này còn giúp bé xì hơi hiệu quả và nhẹ nhàng hơn cả tư thế bế máy bay thông thường."
+• 这个小东西叫微动开关，几分钱一个。 = "Linh kiện nhỏ này gọi là Nút bấm 4 chân, giá chỉ vài chục nghìn một cái."
+
+• 如果家里的电风扇或其他电器只是灯亮。 = "Nếu quạt điện hoặc các thiết bị điện trong nhà chỉ sáng đèn báo,"
+
+• 按开关没任何反应打不开。 = "nhưng bấm công tắc mà không có phản ứng, thiết bị không hoạt động,"
+
+• 大部分都是这个微动开关的问题。 = "thì đa phần nguyên nhân là do Nút bấm 4 chân bị hỏng."
+
+• 只需打开外壳拆除里面的主板。 = "Chỉ cần mở vỏ thiết bị và tháo bo mạch bên trong ra."
+
+• 找到相对应的那个开关。 = "Sau đó xác định đúng Nút bấm 4 chân cần thay."
+
+• 用烙铁把它烫下来。 = "Dùng mỏ hàn tháo công tắc cũ ra."
+
+• 再安装一个新的就能解决。 = "Lắp công tắc mới vào là thiết bị sẽ hoạt động bình thường."
+
+• 你学会了吗？ = "Bạn đã biết cách làm chưa?"
+• 注意看。 = "Chú ý nhé."
+
+• 这就是最简单好用的风口器。 = "Đây là đầu thổi gió tự chế đơn giản nhưng cực kỳ hiệu quả."
+
+• 把一个不要的衣服夹拆开。 = "Tháo rời một chiếc kẹp quần áo cũ không còn sử dụng."
+
+• 拽出来这个U型的金属丝。 = "Lấy phần dây kim loại hình chữ U ở bên trong ra."
+
+• 然后塞到打火机的防风罩里面。 = "Luồn dây kim loại vào bên trong tấm chắn gió của bật lửa."
+
+• 只需加热一下就可以使用。 = "Chỉ cần châm lửa làm nóng là có thể sử dụng ngay."
+
+• 我们来看看这样的效果。 = "Cùng xem hiệu quả của mẹo này nhé."
+
+• 那是真不错。 = "Kết quả thực sự rất ấn tượng."
+• 注意看。 = "Chú ý nhé."
+
+• 鱼肉买回来不要总是红烧了。 = "Mua cá về đừng lúc nào cũng chỉ đem kho nữa."
+
+• 试试这个蒜香鱼片。 = "Hãy thử món cá phi lê sốt tỏi này."
+
+• 保证你吃上一次就会念念不忘了。 = "Đảm bảo chỉ cần ăn một lần là sẽ nhớ mãi hương vị."
+
+• 首先。 = "Đầu tiên,"
+
+• 选用10块一斤的黑鱼。 = "Chuẩn bị cá lóc, phi lê thành từng lát mỏng."
+
+• 切成片后放葱姜。 = "Cho hành lá và gừng vào cùng cá."
+
+• 一小勺盐。 = "Thêm một thìa nhỏ muối."
+
+• 少许胡椒粉。 = "Rắc một ít tiêu xay."
+
+• 一个鸡蛋清。 = "Cho thêm một lòng trắng trứng."
+
+• 抓拌均匀腌制10分钟。 = "Trộn đều rồi ướp khoảng 10 phút."
+
+• 水开后。 = "Khi nước sôi,"
+
+• 把鱼肉一片一片放进去。 = "Thả từng lát cá vào nồi."
+
+• 避免成坨了。 = "Không cho vào cùng lúc để cá không bị dính vào nhau."
+
+• 焯烫鱼肉微微卷起就捞出备用。 = "Khi miếng cá vừa cong nhẹ thì vớt ra để ráo."
+
+• 起锅油热放蒜末。 = "Làm nóng chảo với ít dầu rồi cho tỏi băm vào phi thơm."
+
+• 小米辣炒出蒜香。 = "Thêm ớt hiểm băm và xào cho dậy mùi."
+
+• 调味放生抽。 = "Nêm thêm nước tương."
+
+• 蚝油少许鸡精炒出酱香味。 = "Cho dầu hào và một ít bột ngọt, đảo đến khi nước sốt thơm."
+
+• 有缘看到视频的叔叔阿姨哥哥姐姐。 = "Cảm ơn mọi người đã xem đến đây."
+
+• 祝你们事事顺心 心想事成。 = "Chúc mọi người luôn gặp nhiều may mắn, vạn sự như ý."
+
+• 我的祝福你记得查收哦。 = "Nhớ nhận lời chúc tốt đẹp này nhé."
+
+• 接着加入鱼肉。 = "Cho phần cá đã chần vào chảo."
+
+• 快速翻炒均匀。 = "Đảo nhanh tay để cá thấm đều gia vị."
+
+• 撒点葱花。 = "Rắc thêm hành lá cắt nhỏ."
+
+• 开大火翻炒几下就可以出锅了。 = "Đảo trên lửa lớn vài lần rồi tắt bếp."
+
+• 这样做出来的蒜香鱼片。 = "Món cá phi lê sốt tỏi hoàn thành."
+
+• 鲜香滑嫩。 = "Thịt cá mềm ngọt, thơm ngon."
+
+• 蒜香十足。 = "Mùi tỏi thơm nức."
+
+• 三碗米饭都不够吃。 = "Ngon đến mức ăn hết ba bát cơm vẫn còn thèm."
+
+• 喜欢的话赶紧试试看哦。 = "Nếu thích thì hãy thử làm ngay nhé."
+• 注意看。 = "Chú ý nhé."
+
+• 买回来的草鱼不要总是红烧清蒸了。 = "Mua cá trắm về đừng chỉ đem kho hay hấp nữa."
+
+• 试试这个草鱼新吃法。 = "Hãy thử ngay cách chế biến cá trắm mới này."
+
+• 简单好吃又美味。 = "Vừa đơn giản lại thơm ngon khó cưỡng."
+
+• 你可要看好了。 = "Nhớ xem kỹ cách làm nhé."
+
+• 8块一斤的草鱼买回来。 = "Chuẩn bị một con cá trắm tươi."
+
+• 像我这样改上花刀方便入味。 = "Khứa vài đường lên thân cá như thế này để cá thấm gia vị hơn."
+
+• 切好之后放葱姜。 = "Sau đó cho hành lá và gừng vào."
+
+• 一勺料酒。 = "Thêm một thìa rượu nấu ăn."
+
+• 清洗下这样能除去鱼腥味。 = "Xoa đều rồi rửa sạch để khử mùi tanh của cá."
+
+• 然后放姜末、蒜末、小米椒。 = "Tiếp theo cho gừng băm, tỏi băm và ớt hiểm băm."
+
+• 一勺料酒。 = "Thêm một thìa rượu nấu ăn."
+
+• 少许生抽。 = "Cho một ít nước tương."
+
+• 少许盐。 = "Nêm thêm một ít muối."
+
+• 一点鸡精、胡椒粉、豆豉。 = "Cho thêm một ít bột ngọt, tiêu xay và đậu đen lên men."
+
+• 最后放一勺食用油。 = "Cuối cùng thêm một thìa dầu ăn."
+
+• 全部翻拌均匀腌制15分钟。 = "Trộn đều tất cả rồi ướp khoảng 15 phút."
+
+• 看到这如果你还记不住的话。 = "Nếu xem đến đây mà vẫn chưa nhớ cách làm,"
+
+• 可以点赞收藏起来哦。 = "thì nhớ lưu lại để xem lại nhé."
+
+• 接着把腌制好的鱼肉整齐摆入盘中。 = "Xếp cá đã ướp ngay ngắn lên đĩa."
+
+• 水开扣盖大火蒸8分钟。 = "Đợi nước sôi rồi hấp lửa lớn khoảng 8 phút."
+
+• 出锅之前撒点葱花。 = "Trước khi lấy ra, rắc thêm ít hành lá."
+
+• 这样做出来的草鱼。 = "Món cá trắm làm theo cách này"
+
+• 鱼肉鲜香入味。 = "thịt cá mềm ngọt, thấm đẫm gia vị."
+
+• 下饭好吃。 = "Ăn với cơm cực kỳ ngon."
+
+• 赶紧试试吧。 = "Lưu lại và thử ngay nhé."
 </glossary_idioms>
 
 <pronoun_consistency>
@@ -1848,13 +2690,9 @@ def translate_segments_with_ollama(segments, source_lang="zh", target_lang="vi")
     # đặc biệt hữu ích khi Whisper trả về một segment dài không ngắt câu.
     segments = split_segments_for_translation(segments)
 
-    # Đánh dấu trước câu nào là Whisper hallucination → không gửi đi dịch
-    skip_flags = [is_whisper_hallucination(seg.get("text", "")) for seg in segments]
-    skipped_count = sum(skip_flags)
-
-    # Chỉ gửi các segment hợp lệ sang Ollama
-    valid_segments = [seg for seg, skip in zip(segments, skip_flags) if not skip]
-    print(f"[Translate] {len(segments)} segments → skip {skipped_count} hallucination → translate {len(valid_segments)} ({source_lang}→{target_lang})")
+    # Dịch tất cả segments (hallucination filter đã tắt)
+    valid_segments = segments
+    print(f"[Translate] {len(segments)} segments → translate all ({source_lang}→{target_lang})")
 
     valid_translations = []
     total_batches = (len(valid_segments) + BATCH_SIZE - 1) // BATCH_SIZE
@@ -1895,16 +2733,11 @@ def translate_segments_with_ollama(segments, source_lang="zh", target_lang="vi")
 
     print(f"[Translate] got {len(valid_translations)} / {len(valid_segments)} translations")
 
-    # Map kết quả ngược lại theo thứ tự gốc
+    # Map kết quả theo thứ tự gốc
     translated_segments = []
-    valid_iter = iter(valid_translations)
 
-    for seg, skip in zip(segments, skip_flags):
-        if skip:
-            text = ""  # câu này sẽ bị bỏ qua khi TTS
-        else:
-            raw = next(valid_iter, "")
-            text = clean_text(raw)
+    for seg, raw in zip(segments, valid_translations):
+        text = clean_text(raw)
 
         if is_bad_translation(text, target_lang=target_lang):
             # Dịch không rõ / sai → bỏ qua để TTS skip
@@ -2623,6 +3456,43 @@ async def make_tts_audio(text, voice, rate, output_path, retries=3):
     if not text or len(text) < 2:
         text = FALLBACK_TEXT
 
+    # -----------------------------------------------------------------------
+    # CapCut TTS routing — voice bắt đầu bằng "capcut:" → gọi CapCut API
+    # -----------------------------------------------------------------------
+    if voice.startswith("capcut:"):
+        capcut_voice_type = voice.replace("capcut:", "")
+        resource_id = capcut_get_resource_id(capcut_voice_type)
+
+        # Chuyển rate từ "+10%" → "1.1" cho CapCut API
+        rate_int = parse_rate_int(rate)
+        capcut_rate = str(round(1.0 + rate_int / 100.0, 2))
+
+        last_err = None
+        for attempt in range(retries):
+            try:
+                if os.path.exists(output_path):
+                    os.remove(output_path)
+                result = await capcut_tts_generate(
+                    text=text,
+                    voice=capcut_voice_type,
+                    resource_id=resource_id,
+                    rate=capcut_rate,
+                    output_path=output_path,
+                    timeout=30.0,
+                )
+                if os.path.exists(result) and os.path.getsize(result) >= 100:
+                    return result
+                last_err = Exception("CapCut TTS output is empty or too small")
+            except Exception as e:
+                last_err = e
+                print(f"  [CapCut TTS] attempt {attempt + 1}/{retries} failed: {e}")
+            if attempt < retries - 1:
+                await asyncio.sleep(2.0 + attempt * 1.0)
+        raise last_err
+
+    # -----------------------------------------------------------------------
+    # Edge TTS (default path — giữ nguyên logic cũ)
+    # -----------------------------------------------------------------------
     # Clamp rate trong giới hạn edge-tts chấp nhận được thực tế
     rate_int = parse_rate_int(rate)
     rate_int = max(-30, min(35, rate_int))
@@ -2712,6 +3582,7 @@ async def process_video(
     text_boxes: list | None = None,
     logo_path: str | None = None,
     music_path: str | None = None,
+    remove_chinese: bool = False,
 ):
     try:
         if voice not in ALLOWED_VOICES:
@@ -2815,40 +3686,12 @@ async def process_video(
         raw_segments = result.get("segments", [])
         print(f"[Whisper] {len(raw_segments)} raw segments")
 
-        # Lọc thêm 1 lớp ở Python: bỏ segment có dấu hiệu hallucinate
-        segments = []
-        for seg in raw_segments:
-            no_speech = float(seg.get("no_speech_prob", 0.0))
-            avg_logprob = float(seg.get("avg_logprob", 0.0))
-            text = str(seg.get("text", "")).strip()
-            duration = float(seg.get("end", 0)) - float(seg.get("start", 0))
-
-            # Xác suất "không có giọng" cao → bỏ
-            if no_speech > 0.6:
-                print(f"[Whisper] skip no_speech={no_speech:.2f}: {text[:40]}")
-                continue
-
-            # Model không tự tin → bỏ (trừ khi WHISPER_KEEP_ALL_SEGMENTS=true)
-            if not WHISPER_KEEP_ALL_SEGMENTS and avg_logprob < WHISPER_MIN_LOGPROB:
-                print(f"[Whisper] skip low_logprob={avg_logprob:.2f}: {text[:40]}")
-                continue
-
-            # Segment cực ngắn (< 0.3s) ở đầu video thường là hallucinate
-            if duration < 0.3:
-                print(f"[Whisper] skip tiny duration={duration:.2f}s: {text[:40]}")
-                continue
-
-            # Lọc câu bịa cố định (đã có sẵn)
-            if is_whisper_hallucination(text):
-                print(f"[Whisper] skip hallucination pattern: {text[:40]}")
-                continue
-
-            segments.append(seg)
-
-        print(f"[Whisper] kept {len(segments)} / {len(raw_segments)} segments after filter")
+        # Giữ tất cả segments từ Whisper (hallucination filter đã tắt)
+        segments = raw_segments
+        print(f"[Whisper] keeping all {len(segments)} segments (no hallucination filter)")
 
         if not segments:
-            raise Exception("No valid speech detected after filtering hallucinations")
+            raise Exception("No valid speech detected")
 
         update_job(job_id, 45, "Translating...")
 
@@ -3197,6 +4040,42 @@ async def process_video(
         except Exception:
             pass
 
+        # ────────────────────────────────────────────────────────────────────
+        # XÓA TEXT TIẾNG TRUNG: nếu FE bật removeChinese=true,
+        # dùng EasyOCR + cv2.inpaint để xóa text Trung trên video.
+        # Chạy SAU merge audio để video output đã có audio TTS mới.
+        # ────────────────────────────────────────────────────────────────────
+        if remove_chinese:
+            update_job(job_id, 85, "Removing Chinese text from video...")
+            print(f"[RemoveChinese] Starting text removal for {merged_path}")
+
+            clean_filename = f"clean_{merged_filename}"
+            clean_path = f"{UPLOAD_FOLDER}/{clean_filename}"
+
+            try:
+                def _progress_cb(current, total):
+                    if total > 0:
+                        pct = 85 + int(10 * current / total)  # 85% → 95%
+                        pct = min(pct, 95)
+                        update_job(job_id, pct, f"Removing Chinese text... {current}/{total} frames")
+
+                remove_chinese_text_from_video(
+                    input_video=merged_path,
+                    output_video=clean_path,
+                    ocr_interval=5,
+                    inpaint_radius=7,
+                    dilate_px=12,
+                    progress_callback=_progress_cb,
+                )
+
+                # Thay output bằng file đã clean
+                merged_filename = clean_filename
+                print(f"[RemoveChinese] Done → {clean_filename}")
+
+            except Exception as e:
+                # Nếu text removal fail, vẫn giữ video gốc (có text Trung)
+                print(f"[RemoveChinese] Failed ({e}), keeping original video")
+
         update_job(
             job_id,
             100,
@@ -3296,20 +4175,68 @@ def _download_video_from_url(video_url: str) -> str:
 
     safe_filename = f"video_{uuid.uuid4().hex}.mp4"
     output_path = os.path.join(UPLOAD_FOLDER, safe_filename)
+    
+    is_douyin = "douyin.com" in video_url or "dy.isi.art" in video_url
 
+    # First attempt: Try with browser cookies
     ydl_opts = {
         "outtmpl": output_path,
         "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best",
         "merge_output_format": "mp4",
         "noplaylist": True,
-        "quiet": True,
-        "no_warnings": True,
+        "quiet": False,
+        "no_warnings": False,
         "ignoreerrors": False,
         "restrictfilenames": True,
+        "socket_timeout": 30,
+        "retries": 3,
     }
-
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        ydl.download([video_url])
+    
+    # For Douyin, try to extract cookies from browser
+    if is_douyin:
+        # Try multiple browsers in order of preference
+        for browser in ["firefox", "chrome", "edge"]:
+            ydl_opts["cookiesfrombrowser"] = (browser, None)
+            try:
+                print(f"[yt-dlp] Attempting Douyin download with {browser} cookies...")
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    ydl.download([video_url])
+                if os.path.exists(output_path):
+                    print(f"[yt-dlp] Successfully downloaded from Douyin using {browser}")
+                    return output_path
+            except Exception as e:
+                error_msg = str(e)
+                print(f"[yt-dlp] Failed with {browser}: {error_msg}")
+                # Clean up partial file
+                if os.path.exists(output_path):
+                    try:
+                        os.remove(output_path)
+                    except:
+                        pass
+                continue
+        
+        # If all browser methods failed
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Douyin/TikTok China requires fresh login cookies. Please:\n"
+                "1. Log into douyin.com in your browser (Firefox, Chrome, or Edge)\n"
+                "2. Keep the browser open and try again\n"
+                "Or use a YouTube URL instead."
+            ),
+        )
+    
+    # For other platforms (YouTube, etc)
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([video_url])
+    except Exception as e:
+        error_msg = str(e)
+        print(f"[yt-dlp] Download error: {error_msg}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Failed to download video: {error_msg[:100]}"
+        )
 
     if not os.path.exists(output_path):
         raise HTTPException(status_code=500, detail="Failed to download video from URL")
@@ -3333,6 +4260,7 @@ async def upload_video(
     zoomCrop: str = Form("1.0"),
     subtitleConfig: str = Form("{}"),
     textBoxes: str = Form("[]"),
+    removeChinese: str = Form("false"),
     logo: UploadFile | None = File(None),
     music: UploadFile | None = File(None),
 ):
@@ -3362,6 +4290,8 @@ async def upload_video(
         orig_vol = float(originalVolume)
     except Exception:
         orig_vol = 0.1
+    remove_chinese_flag = str(removeChinese).lower() in ("true", "1", "yes")
+
     try:
         zoom_val = float(zoomCrop)
     except Exception:
@@ -3425,6 +4355,7 @@ async def upload_video(
         text_boxes=text_boxes_data,
         logo_path=logo_path,
         music_path=music_path,
+        remove_chinese=remove_chinese_flag,
     )
 
     return {
@@ -3473,6 +4404,8 @@ async def render_final(data: dict):
     images = data.get("images", [])
     subtitle_config = data.get("subtitleConfig", {}) or {}
     text_boxes = data.get("textBoxes", []) or []
+    # Tùy chọn hiển thị/ẩn subtitle — mặc định True (hiển thị)
+    show_subtitles = bool(data.get("showSubtitles", True))
 
     preview_w = float(data.get("previewWidth", 0))
     preview_h = float(data.get("previewHeight", 0))
@@ -3509,14 +4442,17 @@ async def render_final(data: dict):
 
     filter_parts = []
 
-    # subtitle layer
-    ass_path_for_ffmpeg = ffmpeg_escape_path(ass_path)
     current_stream = "[0:v]"
 
-    filter_parts.append(
-        f"{current_stream}ass='{ass_path_for_ffmpeg}'[v0]"
-    )
-    current_stream = "[v0]"
+    # subtitle layer — chỉ burn-in khi showSubtitles=True
+    if show_subtitles:
+        ass_path_for_ffmpeg = ffmpeg_escape_path(ass_path)
+        filter_parts.append(
+            f"{current_stream}ass='{ass_path_for_ffmpeg}'[v0]"
+        )
+        current_stream = "[v0]"
+    else:
+        print(f"[Render] showSubtitles=False → bỏ qua burn-in subtitle")
 
     # overlay images
     for i, img in enumerate(images):
@@ -3546,24 +4482,38 @@ async def render_final(data: dict):
 
         current_stream = out_label
 
-    filter_complex = ";".join(filter_parts)
-
-    cmd = [
-        "ffmpeg",
-        "-y",
-        *inputs,
-        "-filter_complex",
-        filter_complex,
-        "-map",
-        current_stream,
-        "-map",
-        "0:a?",
-        "-c:v",
-        "libx264",
-        "-c:a",
-        "copy",
-        output_path,
-    ]
+    # Nếu không có filter nào (showSubtitles=False và không có image),
+    # dùng -c:v copy để không re-encode (nhanh hơn nhiều)
+    if filter_parts:
+        filter_complex = ";".join(filter_parts)
+        cmd = [
+            "ffmpeg",
+            "-y",
+            *inputs,
+            "-filter_complex",
+            filter_complex,
+            "-map",
+            current_stream,
+            "-map",
+            "0:a?",
+            "-c:v",
+            "libx264",
+            "-c:a",
+            "copy",
+            output_path,
+        ]
+    else:
+        # Không có filter → copy nguyên video, không re-encode
+        cmd = [
+            "ffmpeg",
+            "-y",
+            *inputs,
+            "-map", "0:v:0",
+            "-map", "0:a?",
+            "-c:v", "copy",
+            "-c:a", "copy",
+            output_path,
+        ]
 
     try:
         subprocess.run(
